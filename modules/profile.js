@@ -11,7 +11,7 @@ export function avatarHTML(p, size = '') {
   const letter = esc((p.nickname || '?').trim().slice(0, 1));
   let src = '';
   if (p.avatarType === 'core' && p.coreId) src = coreById(p.coreId)?.avatar || '';
-  else if (p.avatarType === 'upload' && p.avatarData) src = p.avatarData;
+  else if (p.avatarType === 'upload' && (p.avatarData || p.avatarThumb)) src = p.avatarData || p.avatarThumb;
   else if (p.avatarType === 'google' && p.photoURL) src = p.photoURL;
   const img = src ? `<img src="${esc(src)}" alt="" referrerpolicy="no-referrer" data-l="${letter}" onerror="this.parentNode.textContent=this.dataset.l">` : letter;
   return `<span class="av ${size}" style="--c:${c};--cs:${soft(c, isDark())}">${img}</span>`;
@@ -23,14 +23,21 @@ async function processImage(file) {
   try {
     const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
     const side = Math.min(img.naturalWidth, img.naturalHeight);
-    const cv = document.createElement('canvas'); cv.width = cv.height = 256;
-    cv.getContext('2d').drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, 256, 256);
-    for (const q of [0.85, 0.7, 0.55, 0.4]) {
-      let d = cv.toDataURL('image/webp', q);
-      if (!d.startsWith('data:image/webp')) d = cv.toDataURL('image/jpeg', q); // 部分 Safari 不支援輸出 webp
-      if (d.length < 100 * 1024 * 1.37) return d;
-    }
-    throw new Error('圖片太大');
+    const draw = n => {
+      const cv = document.createElement('canvas'); cv.width = cv.height = n;
+      cv.getContext('2d').drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, n, n);
+      return cv;
+    };
+    const encode = (cv, limit) => {
+      for (const q of [0.85, 0.7, 0.55, 0.4]) {
+        let d = cv.toDataURL('image/webp', q);
+        if (!d.startsWith('data:image/webp')) d = cv.toDataURL('image/jpeg', q); // 部分 Safari 不支援輸出 webp
+        if (d.length < limit) return d;
+      }
+      throw new Error('圖片太大');
+    };
+    // 大圖給個人檔案用（100KB 內），小圖放進旅程成員資料（12KB 內）
+    return { data: encode(draw(256), 100 * 1024 * 1.37), thumb: encode(draw(96), 12000) };
   } finally { URL.revokeObjectURL(url); }
 }
 
@@ -73,7 +80,7 @@ function bindForm(f, onChange) {
   }));
   $('#fFile').addEventListener('change', async e => {
     const file = e.target.files?.[0]; if (!file) return;
-    try { f.avatarData = await processImage(file); f.avatarType = 'upload'; onChange(); }
+    try { const r = await processImage(file); f.avatarData = r.data; f.avatarThumb = r.thumb; f.avatarType = 'upload'; onChange(); }
     catch { toast('這張圖片沒辦法使用，請換一張'); }
   });
 }
@@ -96,9 +103,10 @@ async function saveProfile(ctx, data, isNew) {
     updatedAt: serverTimestamp(),
     ...(isNew ? { createdAt: serverTimestamp() } : {})
   };
-  if (payload.avatarType !== 'upload') payload.avatarData = '';
+  if (payload.avatarType !== 'upload') { payload.avatarData = ''; payload.avatarThumb = ''; }
   await setDoc(doc(S.db, 'users', S.user.uid), payload, { merge: true });
   ctx.setProfile({ ...(S.profile || {}), ...payload, id: S.user.uid });
+  if (!isNew) ctx.afterProfileSave?.().catch(e => console.warn('同步旅程成員資料失敗', e));
 }
 
 /* ───────── 第一次登入 ───────── */
@@ -110,13 +118,13 @@ export function renderOnboarding(ctx) {
     ob = {
       uid: S.user.uid, step: 'form', qi: 0, answers: [], tweak: 0,
       f: { nickname: c ? c.name : (S.user.displayName || '').slice(0, 20), passportName: '', driver: c ? c.driver : null,
-        avatarType: c ? 'core' : 'google', avatarData: '' }
+        avatarType: c ? 'core' : 'google', avatarData: '', avatarThumb: '' }
     };
   }
   if (ob.step === 'quiz') return renderQuiz(ctx, ob, () => { ob.step = 'result'; renderOnboarding(ctx); }, () => { ob.step = 'form'; renderOnboarding(ctx); });
   if (ob.step === 'result') return renderResult(ctx, ob, async res => {
     await saveProfile(ctx, { ...ob.f, ...res }, true);
-    ob = null; location.hash = '#/'; ctx.render(); toast('個人檔案建立好了！');
+    ob = null; toast('個人檔案建立好了！'); ctx.afterOnboard();
   });
   renderOnboardForm(ctx);
 }
@@ -154,7 +162,7 @@ function renderOnboardForm(ctx) {
     const btn = $('#next'); btn.disabled = true;
     try {
       await saveProfile(ctx, { ...f, coreId: c.id, color: c.color, colorDark: c.colorDark, colorName: `${c.name}的代表色`, colorDesc: '' }, true);
-      ob = null; location.hash = '#/'; ctx.render(); toast('歡迎回來！');
+      ob = null; toast('歡迎回來！'); ctx.afterOnboard();
     } catch (e) { btn.disabled = false; toast('存檔失敗：' + (e?.code || e?.message)); }
   });
 }
@@ -283,7 +291,7 @@ let ed = null;
 export function renderEdit(ctx) {
   const { S } = ctx;
   const p = S.profile;
-  if (!ed || ed.uid !== S.user.uid) ed = { uid: S.user.uid, f: { nickname: p.nickname, passportName: p.passportName || '', driver: !!p.driver, avatarType: p.avatarType, avatarData: p.avatarData || '' } };
+  if (!ed || ed.uid !== S.user.uid) ed = { uid: S.user.uid, f: { nickname: p.nickname, passportName: p.passportName || '', driver: !!p.driver, avatarType: p.avatarType, avatarData: p.avatarData || '', avatarThumb: p.avatarThumb || '' } };
   const f = ed.f;
   $('#main').innerHTML = `<div class="wrap">${ctx.topBar(`<a class="iconbtn" href="#/me" aria-label="取消編輯" style="margin-left:-10px">${ic.back}</a>`)}
     <div class="row" style="gap:16px">${avatarHTML({ ...p, ...f }, 'xl')}<h1 class="title" style="font-size:24px">編輯個人檔案</h1></div>

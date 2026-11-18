@@ -7,8 +7,8 @@ import { firebaseConfig } from './firebase-config.js';
 import { $, esc, ic, applyTheme, toggleTheme, isDark, copyText } from './modules/ui.js';
 import { CORE } from './modules/color.js';
 import { renderOnboarding, renderProfile, renderEdit, renderQuizRedo, avatarHTML } from './modules/profile.js';
+import { renderHome, renderTripForm, renderTrip, renderJoin, ensureTrips, stopTrips, cleanup, makeSync, pendingJoin } from './modules/trips.js';
 
-const VERSION = 'v0.1';
 applyTheme();
 
 /* ───────── Firebase ───────── */
@@ -54,7 +54,8 @@ function showLogin(errText = '') {
       ${iab === 'LINE' ? `<a class="btn pri full" href="${esc(ext.href)}">用外部瀏覽器開啟</a>` : `<p class="small muted" style="margin:0">請點右上角「⋯」，選「在瀏覽器中開啟」。</p>`}
       <button class="btn full" id="copyUrl">${ic.copy}複製網址</button></div>`;
   } else {
-    body = `<button class="gbtn" id="loginBtn">${ic.google}用 Google 帳號登入</button>
+    body = `${pendingJoin.get() ? '<p class="small muted" style="margin:0">你收到一趟旅程的邀請！先用 Google 帳號登入，就能看到邀請內容。</p>' : ''}
+      <button class="gbtn" id="loginBtn">${ic.google}用 Google 帳號登入</button>
       ${errText ? `<p class="warn">${esc(errText)}</p>` : ''}
       <p class="tiny faint" style="margin:0">旅伴請用小夥伴邀請你時的 Google 帳號登入</p>`;
   }
@@ -79,71 +80,77 @@ function showMessage(title, text, withLogout = false) {
   $('#reload')?.addEventListener('click', () => location.reload());
 }
 
-/* ───────── 首頁 ───────── */
+/* ───────── 共用頂部列 ───────── */
 function topBar(left) {
   const p = S.profile;
   return `<header class="top">${left}
     <div class="row" style="gap:2px">
       <button class="iconbtn" id="themeBtn" aria-label="${isDark() ? '切換成淺色模式' : '切換成夜間模式'}">${isDark() ? ic.sun : ic.moon}</button>
-      ${p ? `<a class="iconbtn" href="#/me" aria-label="我的個人檔案">${avatarHTML(p, 'sm')}</a>` : ''}
+      ${p ? `<a class="iconbtn" href="#/me" aria-label="我的個人檔案">${avatarHTML(p, 'top')}</a>` : ''}
     </div></header>`;
 }
 function bindTop() {
-  $('#themeBtn')?.addEventListener('click', () => { toggleTheme(); render(); });
+  $('#themeBtn')?.addEventListener('click', () => { toggleTheme(); render(true); });
 }
 const brand = `<a class="brand" href="#/"><img src="img/icon-192.png" alt=""><span>小夥伴粗國玩</span></a>`;
 
-function renderHome() {
-  const p = S.profile;
-  const core = !!p.coreId;
-  $('#main').innerHTML = `<div class="wrap">${topBar(brand)}
-    <div><div class="small muted">嗨，${esc(p.nickname)}</div>
-      <h1 class="title" style="font-size:25px;line-height:1.35">下一趟想去哪裡粗國玩？</h1></div>
-    <section class="card">
-      <div class="row" style="justify-content:space-between">
-        <h2 class="title" style="font-size:17px">旅程</h2><span class="chip">製作中</span>
-      </div>
-      <p class="small muted" style="margin:0">${core
-        ? '開旅程、邀請旅伴、行程、記帳會在下一版陸續開放。現在可以先把個人檔案設定好。'
-        : '小夥伴邀請你加入旅程後，旅程會出現在這裡。現在可以先把個人檔案設定好。'}</p>
-      ${core ? `<button class="btn pri full" disabled>${ic.plus}開新旅程（下一版開放）</button>` : ''}
-    </section>
-    <a class="card" href="#/me" style="text-decoration:none;flex-direction:row;align-items:center;gap:14px">
-      ${avatarHTML(p, 'lg')}
-      <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px">
-        <b style="font-size:16px">${esc(p.nickname)}</b>
-        <span class="small muted">${esc(p.colorName || '')}${core ? '・小夥伴' : '・旅伴'}</span>
-      </div>
-      <span class="faint">${ic.chev}</span>
-    </a>
-    <p class="tiny faint" style="text-align:center;margin:0">小夥伴粗國玩 ${VERSION}</p>
-  </div>`;
-  bindTop();
-}
-
 /* ───────── 路由 ───────── */
-function render() {
+let lastRoute = null;
+function render(keep = false) {
   if (!S.user) return;
   if (!S.profile) return renderOnboarding(ctx);
   const route = location.hash.replace(/^#\/?/, '');
+  if (route !== lastRoute && !keep) { cleanup(); lastRoute = route; window.scrollTo(0, 0); }
+  let m;
   if (route === 'me') return renderProfile(ctx);
   if (route === 'me/edit') return renderEdit(ctx);
   if (route === 'me/color' && !S.profile.coreId) return renderQuizRedo(ctx);
-  renderHome();
+  if (route === 'new' && S.profile.coreId) return renderTripForm(ctx, null);
+  if ((m = route.match(/^trip\/([\w-]+)\/edit$/))) return renderTripForm(ctx, m[1]);
+  if ((m = route.match(/^trip\/([\w-]+)$/))) return renderTrip(ctx, m[1]);
+  if ((m = route.match(/^join\/([A-Za-z0-9]+)$/))) return renderJoin(ctx, m[1]);
+  if (route !== '') { location.replace('#/'); return; }
+  renderHome(ctx);
 }
-const ctx = { S, render, topBar, bindTop, brand, signOut: () => signOut(auth), setProfile: p => { S.profile = p; } };
-window.addEventListener('hashchange', render);
+// 旅程資料有變動時，只重畫「看資料」的頁面（表單頁不重畫，以免打到一半的字不見）
+function onTrips() {
+  const route = location.hash.replace(/^#\/?/, '');
+  if (route === '' || /^trip\/[\w-]+$/.test(route)) render(true);
+}
+function afterOnboard() {
+  ensureTrips(ctx, onTrips);
+  const code = pendingJoin.get();
+  location.hash = code ? `#/join/${code}` : '#/';
+  render();
+}
+const ctx = { S, render, topBar, bindTop, brand, afterOnboard, signOut: () => { stopTrips(); return signOut(auth); }, setProfile: p => { S.profile = p; } };
+ctx.afterProfileSave = makeSync(ctx);
+window.addEventListener('hashchange', () => render());
+
+/* ───────── 邀請連結：?join=邀請碼 ───────── */
+{
+  const u = new URL(location.href);
+  const code = u.searchParams.get('join');
+  if (code) {
+    pendingJoin.set(code.toUpperCase());
+    u.searchParams.delete('join');
+    history.replaceState(null, '', u.pathname + u.search + `#/join/${code.toUpperCase()}`);
+  }
+}
 
 /* ───────── 登入狀態 ───────── */
 onAuthStateChanged(auth, async user => {
-  S.user = user; S.profile = null; S.coreId = null;
-  if (!user) return showLogin();
+  S.user = user; S.profile = null; S.coreId = null; S.trips = null; lastRoute = null;
+  if (!user) { stopTrips(); return showLogin(); }
   $('#main').innerHTML = '<div class="gate"><div class="spinner" role="status" aria-label="載入中"></div></div>';
   try {
     const snap = await getDoc(doc(db, 'users', user.uid));
     if (snap.exists()) {
       S.profile = { id: user.uid, ...snap.data() };
       S.coreId = S.profile.coreId || null;
+      ensureTrips(ctx, onTrips);
+      const code = pendingJoin.get();
+      if (code && !location.hash.startsWith('#/join/')) location.replace(`#/join/${code}`);
     } else {
       if (!navigator.onLine) return showMessage('第一次登入需要網路', '連上網路後再重新整理一次，之後沒有訊號也能打開。');
       S.coreId = await detectCore();

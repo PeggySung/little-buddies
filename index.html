@@ -84,6 +84,37 @@ h1, h2, h3 { margin: 0; font-weight: 400; }
 .av img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .av.xl { --s: 96px; border-width: 4px; }
 .av.lg { --s: 64px; border-width: 3px; }
+.av.sm { --s: 30px; border-width: 2px; }
+.av.top { --s: 36px; border-width: 2.5px; }
+.stack { display: flex; }
+.stack .av { box-shadow: 0 0 0 2px var(--card); margin-right: -6px; }
+.av.more { font-size: 11px; font-family: var(--f-num); background: var(--sunk); border-color: var(--line2); }
+
+/* 旅程 */
+.trip { text-decoration: none; color: var(--ink); }
+.trip-top { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+.stamp { --s: 72px; width: var(--s); height: var(--s); flex-shrink: 0; border-radius: 50%; border: 2px solid var(--stamp); color: var(--stamp); padding: calc(var(--s) * .055); box-sizing: border-box; opacity: .92; }
+.stamp > div { width: 100%; height: 100%; border-radius: 50%; border: 1px dashed var(--stamp); display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; }
+.stamp b { font-size: calc(var(--s) * .12); letter-spacing: 1px; line-height: 1.2; }
+.stamp span { font-size: calc(var(--s) * .22); line-height: 1.15; white-space: nowrap; }
+.stamp i { font-style: normal; font-size: calc(var(--s) * .12); font-weight: 700; }
+.stamps { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding-top: 4px; }
+.stamp-empty { width: 64px; height: 64px; border-radius: 50%; border: 1.5px dashed var(--line2); display: flex; align-items: center; justify-content: center; }
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.stats > div { display: flex; flex-direction: column; gap: 2px; }
+.stats b { font-size: 26px; line-height: 1; }
+.sec { display: flex; flex-direction: column; gap: 10px; }
+.sec-h { font-size: 13px; font-weight: 700; color: var(--ink3); letter-spacing: 1px; }
+.muted-chip { background: var(--sunk); color: var(--ink2); }
+.grid2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.grid2 > * { min-width: 0; }
+input[type=date].input { min-width: 0; padding: 0 10px; }
+.place-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.place-row select { flex: 0 0 120px; }
+.place-row input { flex: 1 1 120px; min-width: 0; }
+select.input { appearance: auto; padding-right: 8px; }
+.invite { display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: var(--r-btn); background: var(--sunk); }
+.code { font-size: 28px; letter-spacing: 4px; line-height: 1.1; }
 
 /* 表單 */
 .field { display: flex; flex-direction: column; gap: 6px; }

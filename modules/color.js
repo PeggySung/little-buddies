@@ -163,3 +163,18 @@ export function isAllowedGuestColor(hex) {
 
 // 淡色底（頭像、標籤用）
 export const soft = (hex, dark) => hex + (dark ? '33' : '2E');
+
+// 同一趟旅程裡，和其他人的顏色太像時，只在這趟微調明亮度（個人檔案的顏色不變）
+export function adjustForPeers(color, colorDark, peerColors) {
+  const tooClose = hex => peerColors.some(p => deltaE(hex, p) < MIN_DE_PEER);
+  if (!tooClose(color)) return { color, colorDark, adjusted: false };
+  const base = hexToOklch(color), baseDark = hexToOklch(colorDark);
+  for (const step of [0.04, -0.04, 0.08, -0.08, 0.12, -0.12]) {
+    const L = clamp(base.L + step, L_RANGE[0], L_RANGE[1]);
+    const c = oklchToHex(L, base.C, base.h);
+    if (!tooClose(c) && minCoreDelta(c) >= MIN_DE_CORE) {
+      return { color: c, colorDark: oklchToHex(clamp(baseDark.L + step, 0.70, 0.86), baseDark.C, baseDark.h), adjusted: true };
+    }
+  }
+  return { color, colorDark, adjusted: false };
+}
