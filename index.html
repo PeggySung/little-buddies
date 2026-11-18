@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>小夥伴粗國玩 LITTLE BUDDIES</title>
+<meta name="description" content="小夥伴們的出國旅遊 app：行程、交通住宿、準備清單、記帳結算">
+<meta name="theme-color" content="#F7F4EC">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="img/favicon-48.png" sizes="48x48">
+<link rel="apple-touch-icon" href="img/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="小夥伴粗國玩">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Huninn&family=Noto+Sans+TC:wght@400;500;700&family=Nunito:wght@700;800&display=swap" rel="stylesheet">
+<script>
+  // 在畫面出現前先套用深淺色，避免閃一下
+  try { var t = localStorage.getItem('lb:theme'); document.documentElement.dataset.theme = (t === 'dark' || t === 'light') ? t : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); } catch (e) {}
+</script>
+<style>
+/* ───────── 色彩與字體（規格見 整體規劃.md 附錄） ───────── */
+:root {
+  --bg:#F7F4EC; --card:#FFFDF8; --sunk:#EFE9DC;
+  --ink:#24324A; --ink2:#4F5B6E; --ink3:#5F6A7C;
+  --line:rgba(36,50,74,.14); --line2:rgba(36,50,74,.32);
+  --pri:#F2B33D; --on-pri:#3A2800;
+  --acc:#F2B33D; --acc-soft:#FBEBC4; --acc-ink:#5A3C00; --sel-ink:#24324A;
+  --stamp:#B4532F; --danger:#B42318; --danger-soft:#FDE8E6;
+  --shadow:3px 4px 0 rgba(36,50,74,.10);
+  --f-title:"Huninn","Noto Sans TC",system-ui,sans-serif;
+  --f-body:"Noto Sans TC",system-ui,-apple-system,sans-serif;
+  --f-num:"Nunito","Noto Sans TC",system-ui,sans-serif;
+  --r-card:18px 22px 17px 21px / 21px 17px 22px 18px;
+  --r-card2:21px 17px 22px 18px / 18px 22px 17px 21px;
+  --r-btn:14px 16px 13px 15px / 15px 13px 16px 14px;
+  --safe-t:env(safe-area-inset-top,0px); --safe-b:env(safe-area-inset-bottom,0px);
+  color-scheme: light;
+}
+[data-theme="dark"] {
+  --bg:#121821; --card:#1B2330; --sunk:#242E3D;
+  --ink:#EEE8DC; --ink2:#B6BDC8; --ink3:#A0A8B4;
+  --line:rgba(238,232,220,.12); --line2:rgba(238,232,220,.28);
+  --pri:#F5C15A; --on-pri:#241A03;
+  --acc:#F5C15A; --acc-soft:rgba(245,193,90,.16); --acc-ink:#F7CF7A; --sel-ink:#F7CF7A;
+  --stamp:#F0A07A; --danger:#FF8A80; --danger-soft:rgba(255,138,128,.14);
+  --shadow:3px 4px 0 rgba(0,0,0,.35);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--f-body); -webkit-text-size-adjust: 100%; }
+body { min-height: 100vh; min-height: 100dvh; }
+button, input, select, textarea { font: inherit; color: inherit; }
+a { color: inherit; }
+.hidden { display: none !important; }
+.wrap { max-width: 520px; margin: 0 auto; padding: calc(14px + var(--safe-t)) 18px calc(28px + var(--safe-b)); display: flex; flex-direction: column; gap: 18px; }
+h1, h2, h3 { margin: 0; font-weight: 400; }
+.title { font-family: var(--f-title); }
+.num { font-family: var(--f-num); font-weight: 800; }
+.muted { color: var(--ink2); } .faint { color: var(--ink3); }
+.small { font-size: 13.5px; line-height: 1.6; } .tiny { font-size: 12px; line-height: 1.5; }
+
+/* 頂部列 */
+.top { display: flex; align-items: center; justify-content: space-between; min-height: 44px; gap: 8px; }
+.brand { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+.brand img { width: 36px; height: 36px; border-radius: 10px; }
+.brand span { font-family: var(--f-title); font-size: 20px; }
+.iconbtn { width: 44px; height: 44px; border: 0; background: transparent; color: var(--ink2); display: inline-flex; align-items: center; justify-content: center; border-radius: 12px; cursor: pointer; padding: 0; text-decoration: none; }
+.iconbtn:hover { background: var(--sunk); }
+
+/* 卡片與按鈕 */
+.card { background: var(--card); border: 1.5px solid var(--line); border-radius: var(--r-card); box-shadow: var(--shadow); padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.btn { min-height: 48px; padding: 0 18px; border-radius: var(--r-btn); border: 1.5px solid var(--line2); background: transparent; color: var(--ink); display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-size: 15px; font-weight: 700; cursor: pointer; text-decoration: none; }
+.btn.pri { background: var(--pri); color: var(--on-pri); border-color: transparent; box-shadow: var(--shadow); font-family: var(--f-title); font-weight: 400; font-size: 17px; }
+.btn.full { width: 100%; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn.danger { color: var(--danger); border-color: var(--danger); }
+.gbtn { min-height: 52px; width: 100%; max-width: 320px; margin: 0 auto; border-radius: var(--r-btn); border: 1.5px solid var(--line2); background: var(--card); color: var(--ink); display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 16px; font-weight: 700; cursor: pointer; box-shadow: var(--shadow); }
+.dash { height: 0; border-top: 1.5px dashed var(--line2); }
+.chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; background: var(--acc-soft); color: var(--acc-ink); }
+
+/* 頭像：代表色外框＋淡色底 */
+.av { --s: 40px; width: var(--s); height: var(--s); border-radius: 50%; flex-shrink: 0; border: 2.5px solid var(--c, var(--ink3)); background: var(--cs, var(--sunk)); display: inline-flex; align-items: center; justify-content: center; overflow: hidden; font-weight: 700; font-size: calc(var(--s) * .4); color: var(--ink); position: relative; }
+.av img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.av.xl { --s: 96px; border-width: 4px; }
+.av.lg { --s: 64px; border-width: 3px; }
+
+/* 表單 */
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field > span { font-size: 13px; font-weight: 700; color: var(--ink2); }
+.input { min-height: 48px; padding: 0 14px; border-radius: 12px; border: 1.5px solid var(--line2); background: var(--card); font-size: 16px; width: 100%; }
+.input:focus, .btn:focus-visible, .opt:focus-visible, .seg button:focus-visible, .iconbtn:focus-visible { outline: 2.5px solid var(--acc); outline-offset: 2px; }
+.seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 8px; }
+.seg button { min-height: 46px; border-radius: var(--r-btn); border: 2px solid var(--line); background: var(--card); color: var(--ink2); font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 8px; }
+.seg button[aria-pressed="true"] { background: var(--acc-soft); border-color: var(--acc); color: var(--sel-ink); }
+
+/* 測驗 */
+.progress { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; flex: 1; }
+.progress i { height: 6px; border-radius: 999px; background: var(--line2); }
+.progress i.on { background: var(--acc); }
+.opt { min-height: 60px; width: 100%; display: flex; align-items: center; gap: 14px; padding: 10px 14px; text-align: left; border-radius: var(--r-card); border: 1.5px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer; font-size: 15px; line-height: 1.45; }
+.opt[aria-checked="true"] { border: 2.5px solid var(--oc, var(--acc)); box-shadow: var(--shadow); }
+.opt .oi { width: 42px; height: 42px; flex-shrink: 0; border-radius: 50%; background: var(--ot, var(--sunk)); color: var(--oc, var(--ink2)); display: flex; align-items: center; justify-content: center; }
+.opt .tick { width: 24px; height: 24px; border-radius: 50%; background: var(--acc); color: var(--on-pri); display: none; align-items: center; justify-content: center; flex-shrink: 0; }
+.opt[aria-checked="true"] .tick { display: flex; }
+.swatch { height: 64px; border-radius: var(--r-btn); border: 1.5px solid var(--line); }
+input[type=range] { width: 100%; accent-color: var(--acc); }
+
+/* 登入畫面 */
+.gate { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 32px 22px calc(32px + var(--safe-b)); text-align: center; max-width: 440px; margin: 0 auto; }
+.gate .logo { width: 168px; height: 168px; border-radius: 36px; box-shadow: var(--shadow); }
+.gate h1 { font-family: var(--f-title); font-size: 30px; }
+.gate .en { font-family: var(--f-num); font-weight: 800; letter-spacing: 3px; font-size: 13px; color: var(--stamp); }
+.gate .card { text-align: left; width: 100%; }
+.warn { background: var(--danger-soft); color: var(--danger); border-radius: 12px; padding: 10px 14px; font-size: 14px; }
+
+.row { display: flex; align-items: center; gap: 12px; }
+.list-row { display: flex; align-items: center; gap: 12px; min-height: 44px; }
+.list-row .k { color: var(--ink2); font-size: 14px; width: 112px; flex-shrink: 0; display: flex; align-items: center; gap: 6px; }
+#toast { position: fixed; left: 50%; bottom: calc(28px + var(--safe-b)); transform: translate(-50%, 20px); background: var(--ink); color: var(--bg); padding: 10px 18px; border-radius: 999px; font-size: 14px; opacity: 0; pointer-events: none; transition: .2s; z-index: 99; max-width: 90vw; }
+#toast.show { opacity: 1; transform: translate(-50%, 0); }
+.spinner { width: 28px; height: 28px; border-radius: 50%; border: 3px solid var(--line2); border-top-color: var(--acc); animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2s; } #toast { transition: none; } }
+</style>
+</head>
+<body>
+<main id="main"><div class="gate"><div class="spinner" role="status" aria-label="載入中"></div></div></main>
+<script type="module" src="app.js"></script>
+</body>
+</html>
