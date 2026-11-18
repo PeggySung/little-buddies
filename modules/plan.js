@@ -52,6 +52,12 @@ const sortIt = (a, b) => {
 let reorder = null; // { tripId, day, ids }
 export const isBusy = () => !!document.getElementById('sheet') || !!reorder;
 export function resetPlanUI() { closeSheet(); reorder = null; }
+let sortFromPlan = false; // 從行程頁按「調整順序」進來的，離開時用瀏覽器的上一頁
+export function exitSort(tripId) {
+  reorder = null;
+  if (sortFromPlan) { sortFromPlan = false; history.back(); }
+  else location.replace(`#/trip/${tripId}/plan`);
+}
 
 // 依新順序重算時間：第一個有時間的行程，開始時間不變；之後每個行程接在前一個結束之後，各自的停留時間不變
 function recompute(list) {
@@ -79,7 +85,8 @@ function renderReorder(ctx, t, days, day) {
       <ol class="ro-list" id="roList">${rs.map((r, i) => `<li class="ro-item" data-id="${esc(r.id)}">
           <span class="ro-grip" aria-hidden="true">${ic.grip}</span>
           <span class="ro-time num">${esc(r.nStart || '—')}${r.nEnd ? `<small>${esc(r.nEnd)}</small>` : ''}</span>
-          <span class="ro-title"><b>${esc(r.title)}</b>${durOf(r) ? `<small class="tiny faint">${durOf(r)} 分</small>` : ''}</span>
+          <span class="kind sm" aria-hidden="true">${ic[r.kind === 'move' && /步行|走路/.test(r.title) ? 'walk' : (KINDS[r.kind] || KINDS.spot).icon]}</span>
+          <span class="ro-title"><b>${esc(r.title)}</b><small class="tiny faint">${esc((KINDS[r.kind] || KINDS.spot).label)}${durOf(r) ? `・${durOf(r)} 分` : ''}</small></span>
           <span class="ro-btns">
             <button class="iconbtn" data-up="${i}" aria-label="把「${esc(r.title)}」往上移" ${i === 0 ? 'disabled' : ''}>${ic.up}</button>
             <button class="iconbtn" data-down="${i}" aria-label="把「${esc(r.title)}」往下移" ${i === rs.length - 1 ? 'disabled' : ''}>${ic.down}</button>
@@ -91,7 +98,7 @@ function renderReorder(ctx, t, days, day) {
   const bind = () => {
     $$('[data-up]').forEach(b => b.addEventListener('click', () => { const i = +b.dataset.up; [reorder.ids[i - 1], reorder.ids[i]] = [reorder.ids[i], reorder.ids[i - 1]]; draw(); $(`[data-up="${i - 1}"]`)?.focus() || $(`[data-down="${i - 1}"]`)?.focus(); }));
     $$('[data-down]').forEach(b => b.addEventListener('click', () => { const i = +b.dataset.down; [reorder.ids[i + 1], reorder.ids[i]] = [reorder.ids[i], reorder.ids[i + 1]]; draw(); $(`[data-down="${i + 1}"]`)?.focus() || $(`[data-up="${i + 1}"]`)?.focus(); }));
-    $('#roCancel').addEventListener('click', () => { reorder = null; renderPlan(ctx, t); });
+    $('#roCancel').addEventListener('click', () => exitSort(t.id));
     $('#roSave').addEventListener('click', () => {
       const rs = rows();
       rs.forEach((r, i) => {
@@ -101,7 +108,7 @@ function renderReorder(ctx, t, days, day) {
           .catch(e => toast('儲存失敗：' + (e?.code || e?.message)));
         Object.assign(orig, { start: r.nStart, end: r.nEnd, order: i }); // 先更新畫面，不用等伺服器
       });
-      reorder = null; toast('順序已更新'); renderPlan(ctx, t);
+      toast('順序已更新'); exitSort(t.id);
     });
     // 拖曳（滑鼠、手指都可以）
     const list = $('#roList');
@@ -155,18 +162,22 @@ export function watchItems(ctx, tripId, onChange) {
 export function stopAllItems() { Object.values(cache).forEach(c => c.unsub?.()); Object.keys(cache).forEach(k => delete cache[k]); }
 
 /* ───────── 畫面 ───────── */
-export function renderPlan(ctx, t) {
+export function renderPlan(ctx, t, sortDay = null) {
   const { S } = ctx;
   const days = tripDays(t);
   const key = 'day:' + t.id;
   const st = tripStatus(t);
   const today = todayIn(t.tz);
   const todayDay = days.find(d => d.date === today)?.d;
-  let day = localGet(key);
+  let day = sortDay ?? localGet(key);
   day = day === null ? (todayDay || 1) : +day;
   if (day !== 0 && !days.some(d => d.d === day)) day = 1;
   const items = (cache[t.id]?.items || []).filter(x => x.day === day).sort(sortIt);
-  if (reorder && reorder.tripId === t.id && reorder.day === day) return renderReorder(ctx, t, days, day);
+  if (sortDay !== null) {
+    if (cache[t.id]?.items == null) { $('#planBody').innerHTML = '<div class="spinner" style="margin:30px auto" role="status" aria-label="載入中"></div>'; return; }
+    if (!reorder || reorder.tripId !== t.id || reorder.day !== day) reorder = { tripId: t.id, day, ids: items.map(x => x.id) };
+    return renderReorder(ctx, t, days, day);
+  }
   reorder = null;
   const dinfo = days.find(d => d.d === day);
   const marks = dinfo ? nowMarks(items, dinfo.date, t.tz) : {};
@@ -191,7 +202,7 @@ export function renderPlan(ctx, t) {
     localSet(key, b.dataset.day); renderPlan(ctx, t); centerDay(true);
   });
   $('#addIt').addEventListener('click', () => editItem(ctx, t, null, day, japan));
-  $('#roStart')?.addEventListener('click', () => { reorder = { tripId: t.id, day, ids: items.map(x => x.id) }; renderPlan(ctx, t); });
+  $('#roStart')?.addEventListener('click', () => { sortFromPlan = true; location.hash = `#/trip/${t.id}/plan/sort/${day}`; });
   $$('[data-edit]').forEach(b => b.addEventListener('click', () => editItem(ctx, t, (cache[t.id].items || []).find(x => x.id === b.dataset.edit), day, japan)));
   $$('[data-copy]').forEach(b => b.addEventListener('click', () => copyText(b.dataset.copy)));
   centerDay(false);
@@ -222,7 +233,7 @@ function itemHTML(x, marks) {
       <div class="t num">${esc(x.start || '')}</div>
       <div class="it-card mv">
         <div class="row" style="align-items:flex-start;gap:10px">
-          <span class="faint" style="margin-top:2px">${walk ? ic.walk : ic.move}</span>
+          <span class="kind sm move-k" aria-hidden="true">${walk ? ic.walk : ic.move}</span>
           <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">
             <div class="row" style="gap:8px;flex-wrap:wrap"><b style="font-size:14px">${esc(x.title)}</b>${mins ? `<span class="tiny faint num">${mins} 分</span>` : ''}${flag}</div>
             ${notes.map(n => `<span class="tiny muted">${esc(n)}</span>`).join('')}
@@ -264,7 +275,11 @@ export function closeSheet() { $('#sheet')?.remove(); document.body.style.overfl
 function editItem(ctx, t, x, day, japan) {
   const { S } = ctx;
   const isNew = !x;
-  x = x || { day, start: '', end: '', title: '', kind: 'spot', note: '', price: '', map: '', mapcode: '' };
+  if (!x) {
+    // 當天已經有行程：開始時間預設接在最後一筆之後
+    const prev = (cache[t.id]?.items || []).filter(i => i.day === day && toMin(i.start) !== null).sort(sortIt).pop();
+    x = { day, start: prev ? (prev.end || prev.start) : '', end: '', title: '', kind: 'spot', note: '', price: '', map: '', mapcode: '' };
+  }
   const days = tripDays(t);
   const who = x.updatedBy ? (t.members?.[x.updatedBy]?.nickname || '已離開的成員') : '';
   const when = x.updatedAt?.toDate ? x.updatedAt.toDate() : null;

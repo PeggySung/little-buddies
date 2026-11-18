@@ -110,6 +110,7 @@ function render(keep = false) {
   if ((m = route.match(/^trip\/([\w-]+)\/edit$/))) return renderTripForm(ctx, m[1]);
   if ((m = route.match(/^trip\/([\w-]+)$/))) return renderTrip(ctx, m[1]);
   if ((m = route.match(/^trip\/([\w-]+)\/plan$/))) return renderTripPlan(ctx, m[1]);
+  if ((m = route.match(/^trip\/([\w-]+)\/plan\/sort\/(\d+)$/))) return renderTripPlan(ctx, m[1], +m[2]);
   if ((m = route.match(/^join\/([A-Za-z0-9]+)$/))) return renderJoin(ctx, m[1]);
   if (route !== '') { location.replace('#/'); return; }
   renderHome(ctx);
