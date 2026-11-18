@@ -1,0 +1,227 @@
+// 行程：每天的時間軸、現在進行中、新增／編輯、地圖與導航、備案
+import { doc, collection, onSnapshot, setDoc, updateDoc, deleteDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import { $, $$, esc, ic, toast, copyText, localGet, localSet } from './ui.js';
+import { todayIn, dayCount, tripStatus } from './places.js';
+
+const KINDS = {
+  spot: { label: '景點／活動', icon: 'pin' },
+  food: { label: '吃東西', icon: 'food' },
+  stay: { label: '住宿', icon: 'bed' },
+  move: { label: '移動', icon: 'move' }
+};
+const W = ['日', '一', '二', '三', '四', '五', '六'];
+const mapsSearch = q => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
+const mapsDir = (q, mode = 'driving') => `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(q)}&travelmode=${mode}`;
+const toMin = t => (/^\d{1,2}:\d{2}$/.test(t || '') ? +t.split(':')[0] * 60 + +t.split(':')[1] : null);
+
+/* ───────── 日期 ───────── */
+export function tripDays(t) {
+  const n = dayCount(t.start, t.end), base = Date.parse(t.start + 'T00:00:00Z');
+  return [...Array(n)].map((_, i) => {
+    const d = new Date(base + i * 86400000);
+    return { d: i + 1, date: d.toISOString().slice(0, 10), w: W[d.getUTCDay()] };
+  });
+}
+function nowIn(tz) {
+  try {
+    const p = new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date());
+    return { date: todayIn(tz), min: toMin(p.replace(/^24/, '00')) };
+  } catch { const d = new Date(); return { date: d.toISOString().slice(0, 10), min: d.getHours() * 60 + d.getMinutes() }; }
+}
+// 現在進行中／下一站
+function nowMarks(items, date, tz) {
+  const j = nowIn(tz); if (j.date !== date) return {};
+  const list = items.filter(x => toMin(x.start) !== null);
+  let now = null;
+  list.forEach((x, i) => {
+    const s = toMin(x.start), e = x.end ? toMin(x.end) : (list[i + 1] ? toMin(list[i + 1].start) : 24 * 60);
+    if (!now && s <= j.min && j.min < e) now = x.id;
+  });
+  return { now, next: now ? null : (list.find(x => toMin(x.start) > j.min)?.id || null) };
+}
+const sortIt = (a, b) => {
+  const x = toMin(a.start), y = toMin(b.start);
+  if (x === null && y === null) return (a.order || 0) - (b.order || 0);
+  if (x === null) return 1; if (y === null) return -1;
+  return x - y || (a.order || 0) - (b.order || 0);
+};
+
+/* ───────── 即時資料 ───────── */
+const cache = {}; // tripId → { items, unsub }
+export function watchItems(ctx, tripId, onChange) {
+  const c = cache[tripId] || (cache[tripId] = { items: null, unsub: null, listeners: new Set() });
+  c.listeners.add(onChange);
+  if (!c.unsub) {
+    c.unsub = onSnapshot(collection(ctx.S.db, 'trips', tripId, 'items'), snap => {
+      c.items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      c.listeners.forEach(f => f());
+    }, e => { console.error(e); toast('讀取行程失敗：' + (e?.code || e?.message)); });
+  }
+  return () => c.listeners.delete(onChange);
+}
+export function stopAllItems() { Object.values(cache).forEach(c => c.unsub?.()); Object.keys(cache).forEach(k => delete cache[k]); }
+
+/* ───────── 畫面 ───────── */
+export function renderPlan(ctx, t) {
+  const { S } = ctx;
+  const days = tripDays(t);
+  const key = 'day:' + t.id;
+  const st = tripStatus(t);
+  const today = todayIn(t.tz);
+  const todayDay = days.find(d => d.date === today)?.d;
+  let day = localGet(key);
+  day = day === null ? (todayDay || 1) : +day;
+  if (day !== 0 && !days.some(d => d.d === day)) day = 1;
+  const items = (cache[t.id]?.items || []).filter(x => x.day === day).sort(sortIt);
+  const dinfo = days.find(d => d.d === day);
+  const marks = dinfo ? nowMarks(items, dinfo.date, t.tz) : {};
+  const japan = (t.places || []).some(p => p.country === 'JP');
+  const body = cache[t.id]?.items == null ? '<div class="spinner" style="margin:30px auto" role="status" aria-label="載入中"></div>'
+    : items.length ? `<div class="timeline">${items.map(x => itemHTML(x, marks)).join('')}</div>`
+    : `<div class="card empty"><p class="small muted" style="margin:0">${day === 0 ? '還沒有備案。可以放「有空再去」或「下雨時的替代方案」。' : '這天還沒有行程。'}</p></div>`;
+  const tzNote = (() => { try { return new Intl.DateTimeFormat('zh-TW', { timeZone: t.tz, timeZoneName: 'short' }).formatToParts(new Date()).find(p => p.type === 'timeZoneName')?.value || t.tz; } catch { return t.tz; } })();
+  $('#planBody').innerHTML = `
+    <nav class="daybar" id="daybar" aria-label="選擇日期">
+      ${days.map(d => `<button class="daychip ${st === 'now' && todayDay === d.d ? 'today' : ''}" aria-pressed="${day === d.d}" data-day="${d.d}">
+        <b>Day ${d.d}</b><span>${+d.date.slice(5, 7)}/${+d.date.slice(8)}（${d.w}）</span></button>`).join('')}
+      <button class="daychip" aria-pressed="${day === 0}" data-day="0"><b>備案</b><span>口袋名單</span></button>
+    </nav>
+    <div class="dayhead"><h2 class="title">${day === 0 ? '備案' : `Day ${day}`}</h2>
+      <span class="small muted">${dinfo ? `${dinfo.date.replace(/-/g, '/')}（${dinfo.w}）・當地時間 ${esc(tzNote)}` : '有空檔或天氣不好時的選擇'}</span></div>
+    ${body}
+    <button class="btn full" id="addIt">${ic.plus}新增${day === 0 ? '備案' : '行程'}</button>`;
+  $('#daybar').addEventListener('click', e => {
+    const b = e.target.closest('[data-day]'); if (!b) return;
+    localSet(key, b.dataset.day); renderPlan(ctx, t); centerDay(true);
+  });
+  $('#addIt').addEventListener('click', () => editItem(ctx, t, null, day, japan));
+  $$('[data-edit]').forEach(b => b.addEventListener('click', () => editItem(ctx, t, (cache[t.id].items || []).find(x => x.id === b.dataset.edit), day, japan)));
+  $$('[data-copy]').forEach(b => b.addEventListener('click', () => copyText(b.dataset.copy)));
+  centerDay(false);
+  if ((marks.now || marks.next) && !renderPlan.scrolled?.[t.id]) {
+    renderPlan.scrolled = { ...(renderPlan.scrolled || {}), [t.id]: true };
+    const el = document.getElementById('it-' + (marks.now || marks.next));
+    if (el) setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 250);
+  }
+}
+function centerDay(smooth) {
+  const bar = $('#daybar'), sel = bar?.querySelector('[aria-pressed="true"]'); if (!sel) return;
+  const br = bar.getBoundingClientRect(), sr = sel.getBoundingClientRect();
+  bar.scrollTo({ left: bar.scrollLeft + (sr.left + sr.width / 2) - (br.left + br.width / 2), behavior: smooth ? 'smooth' : 'auto' });
+}
+
+function itemHTML(x, marks) {
+  const s = toMin(x.start), e = toMin(x.end);
+  const mins = s !== null && e !== null && e > s ? e - s : null;
+  const isNow = marks.now === x.id, isNext = marks.next === x.id;
+  const flag = isNow ? '<span class="chip">現在進行中</span>' : isNext ? '<span class="chip">下一站</span>' : '';
+  const notes = (x.note || '').split('\n').map(l => l.trim()).filter(Boolean);
+  const walk = /步行|走路/.test(x.title);
+  const mc = x.mapcode ? `<button class="btn sm" data-copy="${esc(x.mapcode)}">${ic.copy}Mapcode ${esc(x.mapcode)}</button>` : '';
+  const editBtn = `<button class="iconbtn" data-edit="${esc(x.id)}" aria-label="編輯「${esc(x.title)}」">${ic.edit}</button>`;
+  const k = KINDS[x.kind] || KINDS.spot;
+  if (x.kind === 'move') {
+    return `<div class="it move ${isNow ? 'now' : ''}" id="it-${esc(x.id)}">
+      <div class="t num">${esc(x.start || '')}</div>
+      <div class="it-card mv">
+        <div class="row" style="align-items:flex-start;gap:10px">
+          <span class="faint" style="margin-top:2px">${walk ? ic.walk : ic.move}</span>
+          <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">
+            <div class="row" style="gap:8px;flex-wrap:wrap"><b style="font-size:14px">${esc(x.title)}</b>${mins ? `<span class="tiny faint num">${mins} 分</span>` : ''}${flag}</div>
+            ${notes.map(n => `<span class="tiny muted">${esc(n)}</span>`).join('')}
+          </div>${editBtn}
+        </div>
+        ${x.map || mc ? `<div class="acts">${x.map ? `<a class="btn sm pri" href="${mapsDir(x.map, walk ? 'walking' : 'driving')}" target="_blank" rel="noopener">${ic.nav}導航</a>` : ''}${mc}</div>` : ''}
+      </div></div>`;
+  }
+  return `<div class="it ${isNow ? 'now' : ''}" id="it-${esc(x.id)}">
+    <div class="t"><span class="num">${esc(x.start || '—')}</span>${x.end ? `<small class="num">${esc(x.end)}</small>` : ''}</div>
+    <div class="it-card">
+      <div class="row" style="align-items:flex-start;gap:10px">
+        <span class="kind" aria-hidden="true">${ic[k.icon]}</span>
+        <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px">
+          <div class="row" style="gap:8px;flex-wrap:wrap"><b style="font-size:15.5px">${esc(x.title)}</b>${flag}</div>
+          ${mins || x.price ? `<div class="row tiny muted" style="gap:10px">${mins ? `<span>${ic.clock}<span class="num">${mins}</span> 分</span>` : ''}${x.price ? `<span>${ic.coin}${esc(x.price)}</span>` : ''}</div>` : ''}
+        </div>${editBtn}
+      </div>
+      ${notes.length ? `<div class="notes">${notes.map(n => `<p>${esc(n)}</p>`).join('')}</div>` : ''}
+      ${x.map || mc ? `<div class="acts">${x.map ? `<a class="btn sm" href="${mapsSearch(x.map)}" target="_blank" rel="noopener">${ic.map}地圖</a><a class="btn sm pri" href="${mapsDir(x.map)}" target="_blank" rel="noopener">${ic.nav}導航</a>` : ''}${mc}</div>` : ''}
+    </div></div>`;
+}
+
+/* ───────── 底部彈出視窗 ───────── */
+export function openSheet(html, onOpen) {
+  closeSheet();
+  const bg = document.createElement('div');
+  bg.className = 'sheet-bg'; bg.id = 'sheet';
+  bg.innerHTML = `<div class="sheet" role="dialog" aria-modal="true">${html}</div>`;
+  document.body.appendChild(bg);
+  document.body.style.overflow = 'hidden';
+  bg.addEventListener('click', e => { if (e.target === bg || e.target.closest('[data-close]')) closeSheet(); });
+  bg.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); });
+  onOpen?.(bg.firstElementChild);
+  bg.querySelector('input,textarea,select')?.focus({ preventScroll: true });
+}
+export function closeSheet() { $('#sheet')?.remove(); document.body.style.overflow = ''; }
+
+function editItem(ctx, t, x, day, japan) {
+  const { S } = ctx;
+  const isNew = !x;
+  x = x || { day, start: '', end: '', title: '', kind: 'spot', note: '', price: '', map: '', mapcode: '' };
+  const days = tripDays(t);
+  const who = x.updatedBy ? (t.members?.[x.updatedBy]?.nickname || '已離開的成員') : '';
+  const when = x.updatedAt?.toDate ? x.updatedAt.toDate() : null;
+  openSheet(`<div class="sheet-h"><h3 class="title">${isNew ? '新增行程' : '編輯行程'}</h3><button class="iconbtn" data-close aria-label="關閉">✕</button></div>
+    <label class="field"><span>行程項目</span><input class="input" id="fTitle" value="${esc(x.title)}" maxlength="200" placeholder="例如：美術館、拉麵、搭電車到市區"></label>
+    <div class="grid2">
+      <label class="field"><span>哪一天</span><select class="input" id="fDay">
+        ${days.map(d => `<option value="${d.d}" ${x.day === d.d ? 'selected' : ''}>Day ${d.d}（${+d.date.slice(5, 7)}/${+d.date.slice(8)}）</option>`).join('')}
+        <option value="0" ${x.day === 0 ? 'selected' : ''}>備案</option></select></label>
+      <label class="field"><span>類型</span><select class="input" id="fKind">
+        ${Object.entries(KINDS).map(([k, v]) => `<option value="${k}" ${x.kind === k ? 'selected' : ''}>${v.label}</option>`).join('')}</select></label>
+    </div>
+    <div class="grid2">
+      <label class="field"><span>開始</span><input class="input" type="time" step="300" id="fStart" value="${esc(x.start)}"></label>
+      <label class="field"><span>結束（選填）</span><input class="input" type="time" step="300" id="fEnd" value="${esc(x.end)}"></label>
+    </div>
+    <p class="tiny" id="fMins" style="margin:-4px 2px 0;min-height:1em"></p>
+    <label class="field"><span>備註（一行一點）</span><textarea class="input" id="fNote" rows="3" maxlength="2000">${esc(x.note)}</textarea></label>
+    <label class="field"><span>金額（參考，選填）</span><input class="input" id="fPrice" value="${esc(x.price)}" maxlength="40" placeholder="例如 ¥2,000／人"></label>
+    <label class="field"><span>Google Maps 地點（店名或地址）</span><input class="input" id="fMap" value="${esc(x.map)}" maxlength="200" placeholder="填了就會出現「地圖」「導航」按鈕"></label>
+    <a class="tiny" id="fMapTest" href="#" target="_blank" rel="noopener" style="margin-top:-4px">在 Google Maps 檢查這個地點 ›</a>
+    ${japan || x.mapcode ? `<label class="field"><span>Mapcode（日本自駕導航用，選填）</span><input class="input" id="fMc" value="${esc(x.mapcode)}" maxlength="30" inputmode="numeric" placeholder="例如 553 075 797*77"></label>` : ''}
+    ${!isNew && who ? `<p class="tiny faint" style="margin:0">最後修改：${esc(who)}${when ? `・${when.getMonth() + 1}/${when.getDate()} ${String(when.getHours()).padStart(2, '0')}:${String(when.getMinutes()).padStart(2, '0')}` : ''}</p>` : ''}
+    <div class="sheet-acts">${isNew ? '' : '<button class="btn danger" id="fDel">刪除</button>'}<button class="btn pri" id="fSave">儲存</button></div>`, s => {
+    const upd = () => {
+      const a = toMin($('#fStart', s).value), b = toMin($('#fEnd', s).value);
+      const bad = b !== null && (a === null || b < a), mm = $('#fMins', s);
+      mm.textContent = bad ? (a === null ? '有結束時間時，請先填開始時間' : '結束時間不能早於開始時間') : a !== null && b !== null && b > a ? `共 ${b - a} 分鐘` : '';
+      mm.style.color = bad ? 'var(--danger)' : 'var(--ink3)';
+      const q = $('#fMap', s).value.trim();
+      $('#fMapTest', s).href = q ? mapsSearch(q) : '#';
+      $('#fMapTest', s).classList.toggle('hidden', !q);
+    };
+    ['#fStart', '#fEnd', '#fMap'].forEach(id => $(id, s).addEventListener('input', upd)); upd();
+    $('#fSave', s).addEventListener('click', () => {
+      const v = id => ($(id, s)?.value || '').trim();
+      const title = v('#fTitle'); if (!title) { toast('請填寫行程項目'); return; }
+      const sm = toMin(v('#fStart')), em = toMin(v('#fEnd'));
+      if (em !== null && (sm === null || em < sm)) { toast(sm === null ? '有結束時間時，請先填開始時間' : '結束時間不能早於開始時間'); return; }
+      const data = { day: +v('#fDay'), start: v('#fStart'), end: v('#fEnd'), title, kind: v('#fKind'), note: $('#fNote', s).value.replace(/\r/g, '').trim(),
+        price: v('#fPrice'), map: v('#fMap'), mapcode: v('#fMc'), updatedBy: S.user.uid, updatedAt: serverTimestamp() };
+      // 不等伺服器回應：沒網路時先存在手機上，恢復連線後自動同步
+      const p = isNew
+        ? setDoc(doc(collection(S.db, 'trips', t.id, 'items')), { ...data, order: Date.now(), createdBy: S.user.uid, createdAt: serverTimestamp() })
+        : updateDoc(doc(S.db, 'trips', t.id, 'items', x.id), data);
+      p.catch(e => toast('儲存失敗：' + (e?.code || e?.message)));
+      closeSheet(); localSet('day:' + t.id, String(data.day));
+      toast(navigator.onLine ? '已儲存' : '已儲存，恢復連線後會自動同步');
+      renderPlan(ctx, t);
+    });
+    $('#fDel', s)?.addEventListener('click', () => {
+      if (!confirm(`刪除「${x.title}」？`)) return;
+      deleteDoc(doc(S.db, 'trips', t.id, 'items', x.id)).catch(e => toast('刪除失敗：' + (e?.code || e?.message)));
+      closeSheet(); toast('已刪除');
+    });
+  });
+}

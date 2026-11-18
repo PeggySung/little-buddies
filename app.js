@@ -4,10 +4,11 @@ import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChang
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, memoryLocalCache,
   doc, getDoc, getDocFromServer } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { firebaseConfig } from './firebase-config.js';
+import { stopAllItems, closeSheet } from './modules/plan.js';
 import { $, esc, ic, applyTheme, toggleTheme, isDark, copyText } from './modules/ui.js';
 import { CORE } from './modules/color.js';
 import { renderOnboarding, renderProfile, renderEdit, renderQuizRedo, avatarHTML } from './modules/profile.js';
-import { renderHome, renderTripForm, renderTrip, renderJoin, ensureTrips, stopTrips, cleanup, makeSync, pendingJoin } from './modules/trips.js';
+import { renderHome, renderTripForm, renderTrip, renderTripPlan, renderJoin, ensureTrips, stopTrips, cleanup, makeSync, pendingJoin } from './modules/trips.js';
 
 applyTheme();
 
@@ -86,7 +87,7 @@ function topBar(left) {
   return `<header class="top">${left}
     <div class="row" style="gap:2px">
       <button class="iconbtn" id="themeBtn" aria-label="${isDark() ? '切換成淺色模式' : '切換成夜間模式'}">${isDark() ? ic.sun : ic.moon}</button>
-      ${p ? `<a class="iconbtn" href="#/me" aria-label="我的個人檔案">${avatarHTML(p, 'top')}</a>` : ''}
+      ${p ? `<a class="iconbtn" href="#/me" aria-label="我的個人檔案">${avatarHTML(p, 'hd')}</a>` : ''}
     </div></header>`;
 }
 function bindTop() {
@@ -108,6 +109,7 @@ function render(keep = false) {
   if (route === 'new' && S.profile.coreId) return renderTripForm(ctx, null);
   if ((m = route.match(/^trip\/([\w-]+)\/edit$/))) return renderTripForm(ctx, m[1]);
   if ((m = route.match(/^trip\/([\w-]+)$/))) return renderTrip(ctx, m[1]);
+  if ((m = route.match(/^trip\/([\w-]+)\/plan$/))) return renderTripPlan(ctx, m[1]);
   if ((m = route.match(/^join\/([A-Za-z0-9]+)$/))) return renderJoin(ctx, m[1]);
   if (route !== '') { location.replace('#/'); return; }
   renderHome(ctx);
@@ -115,7 +117,7 @@ function render(keep = false) {
 // 旅程資料有變動時，只重畫「看資料」的頁面（表單頁不重畫，以免打到一半的字不見）
 function onTrips() {
   const route = location.hash.replace(/^#\/?/, '');
-  if (route === '' || /^trip\/[\w-]+$/.test(route)) render(true);
+  if (route === '' || /^trip\/[\w-]+(\/plan)?$/.test(route)) render(true);
 }
 function afterOnboard() {
   ensureTrips(ctx, onTrips);
@@ -123,9 +125,9 @@ function afterOnboard() {
   location.hash = code ? `#/join/${code}` : '#/';
   render();
 }
-const ctx = { S, render, topBar, bindTop, brand, afterOnboard, signOut: () => { stopTrips(); return signOut(auth); }, setProfile: p => { S.profile = p; } };
+const ctx = { S, render, topBar, bindTop, brand, afterOnboard, signOut: () => { stopTrips(); stopAllItems(); return signOut(auth); }, setProfile: p => { S.profile = p; } };
 ctx.afterProfileSave = makeSync(ctx);
-window.addEventListener('hashchange', () => render());
+window.addEventListener('hashchange', () => { closeSheet(); render(); });
 
 /* ───────── 邀請連結：?join=邀請碼 ───────── */
 {

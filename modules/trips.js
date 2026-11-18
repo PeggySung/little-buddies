@@ -4,16 +4,18 @@ import { doc, collection, query, where, onSnapshot, getDoc, setDoc, updateDoc, d
 import { $, $$, esc, ic, toast, copyText, localGet, localSet } from './ui.js';
 import { avatarHTML } from './profile.js';
 import { adjustForPeers } from './color.js';
+import { renderPlan, watchItems } from './plan.js';
 import { COUNTRIES, countryBy, CURRENCIES, CUR_NAME, timeZones, todayIn, dayCount, tripStatus, STATUS_LABEL,
   fmtRange, placesText } from './places.js';
 
-export const APP_VERSION = 'v0.2';
+export const APP_VERSION = 'v0.3';
 const OTHER = 'OT'; // 清單以外的國家
 const INVITE_DAYS = 7;
 
 /* ───────── 訂閱管理：換頁時取消上一頁的即時更新 ───────── */
 let unsubs = [], inviteSubId = null;
 export function cleanup() { unsubs.forEach(u => { try { u(); } catch {} }); unsubs = []; inviteSubId = null; }
+// 注意：unsubs.planFor 會隨著 unsubs = [] 一起清掉
 
 /* ───────── 旅程清單：登入後訂閱一次，一直保持即時更新 ─────────
    小夥伴讀得到所有旅程（算「我們的足跡」用），旅伴只讀得到自己參加的 */
@@ -295,14 +297,19 @@ export function renderTrip(ctx, id) {
         <button class="btn ${active.length ? '' : 'pri'} full" id="newInvite">${ic.plus}${active.length ? '再產生一組' : '產生邀請連結'}</button>
         <p class="tiny faint" style="margin:0">連結 ${INVITE_DAYS} 天後失效；不想再讓人加入，按「停用」就好。</p>
       </section>` : ''}
+      ${member ? `<a class="card" href="#/trip/${esc(id)}/plan" style="text-decoration:none;flex-direction:row;align-items:center;gap:14px">
+        <span class="kind" aria-hidden="true">${ic.trip}</span>
+        <div style="flex:1;display:flex;flex-direction:column;gap:2px"><b>行程</b><span class="small muted">每天的行程、地圖導航、備案</span></div>
+        <span class="faint">${ic.chev}</span></a>` : ''}
       <section class="card">
         <div class="row" style="justify-content:space-between"><h2 class="title" style="font-size:17px">接下來會開放</h2><span class="chip">製作中</span></div>
-        <p class="small muted" style="margin:0">行程、交通住宿、準備清單、記帳會在之後的版本陸續加上。</p>
+        <p class="small muted" style="margin:0">交通住宿、準備清單、記帳會在之後的版本陸續加上。</p>
       </section>
       ${owner ? `<a class="btn full" href="#/trip/${esc(id)}/edit">${ic.edit}編輯旅程</a>` : ''}
       ${!member ? '<p class="tiny faint" style="text-align:center;margin:0">你沒有參加這趟旅程，只能看摘要。</p>' : ''}
-    </div>`;
-    ctx.bindTop();
+    </div>${member ? tabBar(id, 'home') : ''}`;
+    if (member) $('.wrap').classList.add('has-tabs');
+    ctx.bindTop(); bindTabs();
     $('#newInvite')?.addEventListener('click', () => createInvite(ctx, t));
     $$('[data-share]').forEach(b => b.addEventListener('click', () => shareInvite(t, b.dataset.share, base)));
     $$('[data-off]').forEach(b => b.addEventListener('click', async () => {
@@ -405,4 +412,37 @@ export async function renderJoin(ctx, code) {
       toast(e?.code === 'permission-denied' ? '加入失敗：邀請碼可能剛好過期或被停用了' : '加入失敗：' + (e?.code || e?.message));
     }
   });
+}
+
+/* ───────── 旅程分頁列 ───────── */
+function tabBar(id, active) {
+  const tabs = [['home', '總覽', `#/trip/${id}`], ['trip', '行程', `#/trip/${id}/plan`], ['ticket', '交通住宿', ''], ['list', '清單', ''], ['money', '記帳', '']];
+  return `<nav class="tabbar" aria-label="旅程分頁">${tabs.map(([k, l, href]) => href
+    ? `<a href="${href}" class="${active === k ? 'on' : ''}" ${active === k ? 'aria-current="page"' : ''}><span class="pill">${ic[k]}</span>${l}</a>`
+    : `<button type="button" class="soon" data-soon="${l}"><span class="pill">${ic[k]}</span>${l}</button>`).join('')}</nav>`;
+}
+function bindTabs() { $$('[data-soon]').forEach(b => b.addEventListener('click', () => toast(`「${b.dataset.soon}」還在製作中，下一版開放`))); }
+
+/* ───────── 行程頁 ───────── */
+export function renderTripPlan(ctx, id) {
+  const { S } = ctx;
+  const t = (S.trips || []).find(x => x.id === id);
+  const back = `<a class="iconbtn" href="#/trip/${esc(id)}" aria-label="回旅程總覽" style="margin-left:-10px">${ic.back}</a>`;
+  if (!t || !(t.memberUids || []).includes(S.user.uid)) {
+    $('#main').innerHTML = `<div class="wrap">${ctx.topBar(back)}${S.trips ? '<section class="card"><b>找不到這趟旅程</b><p class="small muted" style="margin:0">可能已經被刪除，或你不是這趟旅程的成員。</p></section>' : '<div class="spinner" style="margin:40px auto"></div>'}</div>`;
+    ctx.bindTop(); return;
+  }
+  $('#main').innerHTML = `<div class="wrap has-tabs">${ctx.topBar(`<div class="row" style="gap:4px;min-width:0">${back}
+      <div style="min-width:0"><div class="title ellip" style="font-size:17px">${esc(t.name)}</div><div class="tiny faint ellip">${esc(placesText(t.places))}</div></div></div>`)}
+    <div id="planBody" style="display:flex;flex-direction:column;gap:14px"></div>
+  </div>${tabBar(id, 'trip')}`;
+  ctx.bindTop(); bindTabs();
+  renderPlan(ctx, t);
+  if (!unsubs.planFor || unsubs.planFor !== id) {
+    unsubs.planFor = id;
+    unsubs.push(watchItems(ctx, id, () => {
+      if (location.hash !== `#/trip/${id}/plan` || document.getElementById('sheet')) return;
+      const cur = (S.trips || []).find(x => x.id === id); if (cur) renderPlan(ctx, cur);
+    }));
+  }
 }

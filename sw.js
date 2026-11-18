@@ -1,9 +1,9 @@
 // 離線快取：網頁本身先試網路、沒網路用快取；圖片、字體、Firebase 程式庫先用快取
 // 每次更新網站都要改 VERSION，大家重新整理後才會拿到新版
-const VERSION = 'lb-v2';
+const VERSION = 'lb-v3';
 const AVATAR_CACHE = 'lb-avatars'; // Google 頭像（跨版本保留，離線也看得到）
 const SHELL = ['./', './index.html', './app.js', './firebase-config.js', './manifest.webmanifest',
-  './modules/ui.js', './modules/color.js', './modules/profile.js', './modules/trips.js', './modules/places.js',
+  './modules/ui.js', './modules/color.js', './modules/profile.js', './modules/trips.js', './modules/places.js', './modules/plan.js',
   './img/icon-192.png', './img/icon-512.png', './img/apple-touch-icon.png', './img/favicon-48.png',
   './img/avatars/qi.webp', './img/avatars/xuan.webp', './img/avatars/yun.webp', './img/avatars/yue.webp'];
 self.addEventListener('install', e => {
