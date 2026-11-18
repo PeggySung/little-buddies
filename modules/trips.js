@@ -9,7 +9,7 @@ import { renderBook, watchBookings } from './book.js';
 import { COUNTRIES, countryBy, CURRENCIES, CUR_NAME, timeZones, todayIn, dayCount, tripStatus, STATUS_LABEL,
   fmtRange, placesText } from './places.js';
 
-export const APP_VERSION = 'v0.4';
+export const APP_VERSION = 'v0.4.1';
 const OTHER = 'OT';
 // 旅程裡的分頁（資訊、行程…）是同一層，左上角放回首頁的 logo；點進去的細項頁才用「上一頁」箭頭
 const homeBtn = `<a class="iconbtn home-btn" href="#/" aria-label="回首頁（旅程列表）" style="margin-left:-6px"><img src="img/icon-192.png" alt="" width="32" height="32"></a>`; // 清單以外的國家
@@ -300,13 +300,9 @@ export function renderTrip(ctx, id) {
         <button class="btn ${active.length ? '' : 'pri'} full" id="newInvite">${ic.plus}${active.length ? '再產生一組' : '產生邀請連結'}</button>
         <p class="tiny faint" style="margin:0">連結 ${INVITE_DAYS} 天後失效；不想再讓人加入，按「停用」就好。</p>
       </section>` : ''}
-      ${member ? `<a class="card" href="#/trip/${esc(id)}/plan" style="text-decoration:none;flex-direction:row;align-items:center;gap:14px">
-        <span class="kind" aria-hidden="true">${ic.trip}</span>
-        <div style="flex:1;display:flex;flex-direction:column;gap:2px"><b>行程</b><span class="small muted">每天的行程、地圖導航、備案</span></div>
-        <span class="faint">${ic.chev}</span></a>` : ''}
       <section class="card">
         <div class="row" style="justify-content:space-between"><h2 class="title" style="font-size:17px">接下來會開放</h2><span class="chip">製作中</span></div>
-        <p class="small muted" style="margin:0">交通住宿、準備清單、記帳會在之後的版本陸續加上。</p>
+        <p class="small muted" style="margin:0">準備清單、記帳會在之後的版本陸續加上。</p>
       </section>
       ${owner ? `<a class="btn full" href="#/trip/${esc(id)}/edit">${ic.edit}編輯旅程</a>` : ''}
       ${!member ? '<p class="tiny faint" style="text-align:center;margin:0">你沒有參加這趟旅程，只能看摘要。</p>' : ''}

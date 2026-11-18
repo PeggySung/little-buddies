@@ -122,7 +122,14 @@ function commonBottom(t, b) {
       <div class="row" style="gap:6px">${membersRow(t, b)}<button class="iconbtn" data-bedit="${esc(b.id)}" aria-label="編輯">${ic.edit}</button></div>
     </div>`;
 }
+function outOfTrip(t, b) {
+  return ['depDate', 'arrDate', 'inDate', 'outDate', 'pickDate', 'retDate'].some(k => b[k] && (b[k] < t.start || b[k] > t.end));
+}
 function cardHTML(t, b) {
+  const html = cardInner(t, b);
+  return outOfTrip(t, b) ? html.replace('</article>', `<p class="warn" style="margin:0">日期不在旅程期間（${esc(md(t.start))} – ${esc(md(t.end))}）內，請編輯修正。</p></article>`) : html;
+}
+function cardInner(t, b) {
   if (b.type === 'flight') {
     const mins = flightMinutes(b);
     const nextDay = b.arrDate && b.depDate && b.arrDate > b.depDate ? `<sup>+${nights(b.depDate, b.arrDate)}</sup>` : '';
@@ -180,14 +187,22 @@ function chooseType(ctx, t) {
 
 /* ───────── 新增／編輯表單 ───────── */
 const F = (id, label, val, attrs = '') => `<label class="field"><span>${label}</span><input class="input" id="${id}" value="${esc(val || '')}" ${attrs}></label>`;
-const D = (id, label, val) => F(id, label, val, 'type="date"');
+let RANGE = { min: '', max: '' }; // 目前編輯中旅程的日期範圍
+const D = (id, label, val) => F(id, label, val, `type="date" min="${RANGE.min}" max="${RANGE.max}"`);
 const T = (id, label, val) => F(id, label, val, 'type="time" step="300"');
 
 function editBooking(ctx, t, b, type) {
   const { S } = ctx;
   const isNew = !b;
   type = b ? b.type : type;
-  b = b || { type, members: [...(t.memberUids || [])], depTz: 'Asia/Taipei', arrTz: t.tz, mode: 'train' };
+  RANGE = { min: t.start, max: t.end };
+  if (!b) {
+    // 預設日期：住宿、租車是整趟；第一班飛機是出發日，之後的是回程日
+    const hasFlight = (cache[t.id]?.list || []).some(x => x.type === 'flight');
+    const d0 = type === 'flight' && hasFlight ? t.end : t.start;
+    b = { type, members: [...(t.memberUids || [])], depTz: hasFlight && type === 'flight' ? t.tz : 'Asia/Taipei', arrTz: hasFlight && type === 'flight' ? 'Asia/Taipei' : t.tz, mode: 'train',
+      depDate: d0, arrDate: d0, inDate: t.start, outDate: t.end, pickDate: t.start, retDate: t.end };
+  }
   const tzs = timeZones();
   const tzSel = (id, label, val) => `<label class="field"><span>${label}</span><select class="input" id="${id}">${[...new Set([val, ...tzs])].filter(Boolean).map(z => `<option ${z === val ? 'selected' : ''}>${esc(z)}</option>`).join('')}</select></label>`;
   let body = '';
@@ -226,6 +241,7 @@ function editBooking(ctx, t, b, type) {
   const sel = new Set(b.members && b.members.length ? b.members : ms);
   openSheet(`<div class="sheet-h"><h3 class="title">${isNew ? '新增' : '編輯'}${TYPES[type].label}</h3><button class="iconbtn" data-close aria-label="關閉">✕</button></div>
     ${body}
+    <p class="tiny faint" style="margin:-4px 2px 0">日期只能選這趟旅程的 ${esc(md(t.start))} – ${esc(md(t.end))}。</p>
     ${F('bConfirm', '訂位代號（選填）', b.confirm, 'maxlength="40" autocapitalize="characters"')}
     ${F('bLink', '訂單連結（選填）', b.link, 'type="url" maxlength="500" placeholder="https://…"')}
     ${F('bPrice', '金額（參考，選填）', b.price, 'maxlength="40"')}
@@ -243,6 +259,9 @@ function editBooking(ctx, t, b, type) {
       let data = { type, confirm: v('#bConfirm'), link: v('#bLink'), price: v('#bPrice'), note: ($('#bNote', s).value || '').replace(/\r/g, '').trim(),
         members: ms.length > 1 ? [...sel] : ms, updatedBy: S.user.uid, updatedAt: serverTimestamp() };
       if (data.link && !safeUrl(data.link)) { toast('訂單連結要用 https:// 開頭'); return; }
+      // 日期要在旅程期間內（有些瀏覽器手動輸入時不會擋）
+      const outside = $$('input[type="date"]', s).find(el => el.value && (el.value < t.start || el.value > t.end));
+      if (outside) { toast(`日期要在旅程期間內（${md(t.start)} – ${md(t.end)}）`); outside.focus(); return; }
       if (type === 'flight') {
         data = { ...data, airline: v('#bAirline'), no: up('#bNo'), from: up('#bFrom'), to: up('#bTo'), fromName: v('#bFromName'), toName: v('#bToName'),
           depDate: v('#bDepDate'), depTime: v('#bDepTime'), arrDate: v('#bArrDate'), arrTime: v('#bArrTime'), depTz: v('#bDepTz'), arrTz: v('#bArrTz'),
