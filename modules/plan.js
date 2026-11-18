@@ -3,12 +3,23 @@ import { doc, collection, onSnapshot, setDoc, updateDoc, deleteDoc, serverTimest
 import { $, $$, esc, ic, toast, copyText, localGet, localSet } from './ui.js';
 import { todayIn, dayCount, tripStatus } from './places.js';
 
+// 類型：圖示在 img/kinds/（Gemini 畫的貼紙風圖示）
 const KINDS = {
-  spot: { label: '景點／活動', icon: 'pin' },
-  food: { label: '吃東西', icon: 'food' },
-  stay: { label: '住宿', icon: 'bed' },
-  move: { label: '移動', icon: 'move' }
+  spot: { label: '景點／活動', group: 'stay' },
+  food: { label: '吃東西', group: 'stay' },
+  stay: { label: '住宿', group: 'stay' },
+  shop: { label: '購物', group: 'stay' },
+  move: { label: '開車', group: 'go', mode: 'driving' },
+  walk: { label: '步行', group: 'go', mode: 'walking' },
+  train: { label: '電車／捷運', group: 'go', mode: 'transit' },
+  bus: { label: '巴士', group: 'go', mode: 'transit' },
+  flight: { label: '飛機', group: 'go' }
 };
+const isGo = k => KINDS[k]?.group === 'go';
+// 舊資料：類型是「移動」但標題寫步行，當成步行
+const kindOf = x => (x.kind === 'move' && /步行|走路/.test(x.title || '') ? 'walk' : (KINDS[x.kind] ? x.kind : 'spot'));
+const kindImg = (x, cls = '') => `<img class="kicon ${cls}" src="img/kinds/${kindOf(x)}.webp" alt="" width="36" height="36">`;
+const durLabel = k => `${isGo(k) ? '車程時間' : '停留時間'}（分鐘，選填）`;
 const W = ['日', '一', '二', '三', '四', '五', '六'];
 const mapsSearch = q => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
 const mapsDir = (q, mode = 'driving') => `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(q)}&travelmode=${mode}`;
@@ -85,8 +96,8 @@ function renderReorder(ctx, t, days, day) {
       <ol class="ro-list" id="roList">${rs.map((r, i) => `<li class="ro-item" data-id="${esc(r.id)}">
           <span class="ro-grip" aria-hidden="true">${ic.grip}</span>
           <span class="ro-time num">${esc(r.nStart || '—')}${r.nEnd ? `<small>${esc(r.nEnd)}</small>` : ''}</span>
-          <span class="kind sm" aria-hidden="true">${ic[r.kind === 'move' && /步行|走路/.test(r.title) ? 'walk' : (KINDS[r.kind] || KINDS.spot).icon]}</span>
-          <span class="ro-title"><b>${esc(r.title)}</b><small class="tiny faint">${esc((KINDS[r.kind] || KINDS.spot).label)}${durOf(r) ? `・${durOf(r)} 分` : ''}</small></span>
+          ${kindImg(r, 'sm')}
+          <span class="ro-title"><b>${esc(r.title)}</b><small class="tiny faint">${esc(KINDS[kindOf(r)].label)}${durOf(r) ? `・${durOf(r)} 分` : ''}</small></span>
           <span class="ro-btns">
             <button class="iconbtn" data-up="${i}" aria-label="把「${esc(r.title)}」往上移" ${i === 0 ? 'disabled' : ''}>${ic.up}</button>
             <button class="iconbtn" data-down="${i}" aria-label="把「${esc(r.title)}」往下移" ${i === rs.length - 1 ? 'disabled' : ''}>${ic.down}</button>
@@ -224,29 +235,28 @@ function itemHTML(x, marks) {
   const isNow = marks.now === x.id, isNext = marks.next === x.id;
   const flag = isNow ? '<span class="chip">現在進行中</span>' : isNext ? '<span class="chip">下一站</span>' : '';
   const notes = (x.note || '').split('\n').map(l => l.trim()).filter(Boolean);
-  const walk = /步行|走路/.test(x.title);
+  const kk = kindOf(x), mode = KINDS[kk].mode;
   const mc = x.mapcode ? `<button class="btn sm" data-copy="${esc(x.mapcode)}">${ic.copy}Mapcode ${esc(x.mapcode)}</button>` : '';
   const editBtn = `<button class="iconbtn" data-edit="${esc(x.id)}" aria-label="編輯「${esc(x.title)}」">${ic.edit}</button>`;
-  const k = KINDS[x.kind] || KINDS.spot;
-  if (x.kind === 'move') {
+  if (isGo(kk)) {
     return `<div class="it move ${isNow ? 'now' : ''}" id="it-${esc(x.id)}">
       <div class="t num">${esc(x.start || '')}</div>
       <div class="it-card mv">
         <div class="row" style="align-items:flex-start;gap:10px">
-          <span class="kind sm move-k" aria-hidden="true">${walk ? ic.walk : ic.move}</span>
+          ${kindImg(x, 'sm')}
           <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">
             <div class="row" style="gap:8px;flex-wrap:wrap"><b style="font-size:14px">${esc(x.title)}</b>${mins ? `<span class="tiny faint num">${mins} 分</span>` : ''}${flag}</div>
             ${notes.map(n => `<span class="tiny muted">${esc(n)}</span>`).join('')}
           </div>${editBtn}
         </div>
-        ${x.map || mc ? `<div class="acts">${x.map ? `<a class="btn sm pri" href="${mapsDir(x.map, walk ? 'walking' : 'driving')}" target="_blank" rel="noopener">${ic.nav}導航</a>` : ''}${mc}</div>` : ''}
+        ${(x.map && mode) || mc ? `<div class="acts">${x.map && mode ? `<a class="btn sm pri" href="${mapsDir(x.map, mode)}" target="_blank" rel="noopener">${ic.nav}導航</a>` : ''}${mc}</div>` : ''}
       </div></div>`;
   }
   return `<div class="it ${isNow ? 'now' : ''}" id="it-${esc(x.id)}">
     <div class="t"><span class="num">${esc(x.start || '—')}</span>${x.end ? `<small class="num">${esc(x.end)}</small>` : ''}</div>
     <div class="it-card">
       <div class="row" style="align-items:flex-start;gap:10px">
-        <span class="kind" aria-hidden="true">${ic[k.icon]}</span>
+        ${kindImg(x)}
         <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px">
           <div class="row" style="gap:8px;flex-wrap:wrap"><b style="font-size:15.5px">${esc(x.title)}</b>${flag}</div>
           ${mins || x.price ? `<div class="row tiny muted" style="gap:10px">${mins ? `<span>${ic.clock}<span class="num">${mins}</span> 分</span>` : ''}${x.price ? `<span>${ic.coin}${esc(x.price)}</span>` : ''}</div>` : ''}
@@ -290,13 +300,14 @@ function editItem(ctx, t, x, day, japan) {
         ${days.map(d => `<option value="${d.d}" ${x.day === d.d ? 'selected' : ''}>Day ${d.d}（${+d.date.slice(5, 7)}/${+d.date.slice(8)}）</option>`).join('')}
         <option value="0" ${x.day === 0 ? 'selected' : ''}>備案</option></select></label>
       <label class="field"><span>類型</span><select class="input" id="fKind">
-        ${Object.entries(KINDS).map(([k, v]) => `<option value="${k}" ${x.kind === k ? 'selected' : ''}>${v.label}</option>`).join('')}</select></label>
+        <optgroup label="停留">${Object.entries(KINDS).filter(([, v]) => v.group === 'stay').map(([k, v]) => `<option value="${k}" ${kindOf(x) === k ? 'selected' : ''}>${v.label}</option>`).join('')}</optgroup>
+        <optgroup label="交通">${Object.entries(KINDS).filter(([, v]) => v.group === 'go').map(([k, v]) => `<option value="${k}" ${kindOf(x) === k ? 'selected' : ''}>${v.label}</option>`).join('')}</optgroup></select></label>
     </div>
     <div class="grid2">
       <label class="field"><span>開始</span><input class="input" type="time" step="300" id="fStart" value="${esc(x.start)}"></label>
       <label class="field"><span>結束（選填）</span><input class="input" type="time" step="300" id="fEnd" value="${esc(x.end)}"></label>
     </div>
-    <div class="field"><label for="fDur" id="fDurLbl">${x.kind === 'move' ? '車程時間' : '停留時間'}（分鐘，選填）</label>
+    <div class="field"><label for="fDur" id="fDurLbl">${durLabel(kindOf(x))}</label>
       <div class="dur-row"><input class="input" type="number" inputmode="numeric" min="0" max="1440" step="5" id="fDur" value="${durOf(x) ?? ''}" placeholder="例如 60">
         <div class="dur-chips" role="group" aria-label="快速選擇分鐘">${[15, 30, 60, 90, 120].map(m => `<button type="button" class="btn sm" data-dur="${m}">${m}</button>`).join('')}</div></div>
     </div>
@@ -329,7 +340,7 @@ function editItem(ctx, t, x, day, japan) {
     fD.addEventListener('input', () => { if (fD.value === '') fE.value = ''; else fromDur(); upd(); });
     fE.addEventListener('input', () => { const a = toMin(fS.value), b = toMin(fE.value); fD.value = a !== null && b !== null && b >= a ? b - a : ''; upd(); });
     $$('[data-dur]', s).forEach(c => c.addEventListener('click', () => { fD.value = c.dataset.dur; fromDur(); upd(); }));
-    $('#fKind', s).addEventListener('change', e => { $('#fDurLbl', s).textContent = `${e.target.value === 'move' ? '車程時間' : '停留時間'}（分鐘，選填）`; });
+    $('#fKind', s).addEventListener('change', e => { $('#fDurLbl', s).textContent = durLabel(e.target.value); });
     $('#fMap', s).addEventListener('input', upd); upd();
     $('#fSave', s).addEventListener('click', () => {
       const v = id => ($(id, s)?.value || '').trim();
