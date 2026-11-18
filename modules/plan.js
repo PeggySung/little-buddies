@@ -3,7 +3,7 @@ import { doc, collection, onSnapshot, setDoc, updateDoc, deleteDoc, serverTimest
 import { $, $$, esc, ic, toast, copyText, localGet, localSet } from './ui.js';
 import { todayIn, dayCount, tripStatus } from './places.js';
 
-// 類型：圖示在 img/kinds/（Gemini 畫的貼紙風圖示）
+// 類型：圖示在 img/kinds/（Gemini 畫的線條圖示，用遮罩上色，顏色跟著深淺色主題）
 const KINDS = {
   spot: { label: '景點／活動', group: 'stay' },
   food: { label: '吃東西', group: 'stay' },
@@ -18,7 +18,7 @@ const KINDS = {
 const isGo = k => KINDS[k]?.group === 'go';
 // 舊資料：類型是「移動」但標題寫步行，當成步行
 const kindOf = x => (x.kind === 'move' && /步行|走路/.test(x.title || '') ? 'walk' : (KINDS[x.kind] ? x.kind : 'spot'));
-const kindImg = (x, cls = '') => `<img class="kicon ${cls}" src="img/kinds/${kindOf(x)}.webp" alt="" width="36" height="36">`;
+const kindImg = (x, cls = '') => { const k = kindOf(x); return `<span class="kind ${cls} ${isGo(k) ? 'go' : ''}" aria-hidden="true"><span class="kmask" style="--k:url(img/kinds/${k}.webp)"></span></span>`; };
 const durLabel = k => `${isGo(k) ? '車程時間' : '停留時間'}（分鐘，選填）`;
 const W = ['日', '一', '二', '三', '四', '五', '六'];
 const mapsSearch = q => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;

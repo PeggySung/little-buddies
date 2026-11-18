@@ -8,7 +8,7 @@ import { renderPlan, watchItems, isBusy, exitSort } from './plan.js';
 import { COUNTRIES, countryBy, CURRENCIES, CUR_NAME, timeZones, todayIn, dayCount, tripStatus, STATUS_LABEL,
   fmtRange, placesText } from './places.js';
 
-export const APP_VERSION = 'v0.3.3';
+export const APP_VERSION = 'v0.3.4';
 const OTHER = 'OT';
 // 旅程裡的分頁（資訊、行程…）是同一層，左上角放回首頁的 logo；點進去的細項頁才用「上一頁」箭頭
 const homeBtn = `<a class="iconbtn home-btn" href="#/" aria-label="回首頁（旅程列表）" style="margin-left:-6px"><img src="img/icon-192.png" alt="" width="32" height="32"></a>`; // 清單以外的國家
