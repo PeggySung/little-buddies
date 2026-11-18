@@ -4,7 +4,7 @@ import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChang
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, memoryLocalCache,
   doc, getDoc, getDocFromServer } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { firebaseConfig } from './firebase-config.js';
-import { stopAllItems, closeSheet } from './modules/plan.js';
+import { stopAllItems, resetPlanUI, isBusy } from './modules/plan.js';
 import { $, esc, ic, applyTheme, toggleTheme, isDark, copyText } from './modules/ui.js';
 import { CORE } from './modules/color.js';
 import { renderOnboarding, renderProfile, renderEdit, renderQuizRedo, avatarHTML } from './modules/profile.js';
@@ -117,7 +117,7 @@ function render(keep = false) {
 // 旅程資料有變動時，只重畫「看資料」的頁面（表單頁不重畫，以免打到一半的字不見）
 function onTrips() {
   const route = location.hash.replace(/^#\/?/, '');
-  if (route === '' || /^trip\/[\w-]+(\/plan)?$/.test(route)) render(true);
+  if (route === '' || /^trip\/[\w-]+$/.test(route) || (/^trip\/[\w-]+\/plan$/.test(route) && !isBusy())) render(true);
 }
 function afterOnboard() {
   ensureTrips(ctx, onTrips);
@@ -127,7 +127,7 @@ function afterOnboard() {
 }
 const ctx = { S, render, topBar, bindTop, brand, afterOnboard, signOut: () => { stopTrips(); stopAllItems(); return signOut(auth); }, setProfile: p => { S.profile = p; } };
 ctx.afterProfileSave = makeSync(ctx);
-window.addEventListener('hashchange', () => { closeSheet(); render(); });
+window.addEventListener('hashchange', () => { resetPlanUI(); render(); });
 
 /* ───────── 邀請連結：?join=邀請碼 ───────── */
 {

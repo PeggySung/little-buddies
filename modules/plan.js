@@ -13,6 +13,8 @@ const W = ['日', '一', '二', '三', '四', '五', '六'];
 const mapsSearch = q => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
 const mapsDir = (q, mode = 'driving') => `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(q)}&travelmode=${mode}`;
 const toMin = t => (/^\d{1,2}:\d{2}$/.test(t || '') ? +t.split(':')[0] * 60 + +t.split(':')[1] : null);
+const fmtMin = m => `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+const durOf = x => { const a = toMin(x.start), b = toMin(x.end); return a !== null && b !== null && b >= a ? b - a : null; };
 
 /* ───────── 日期 ───────── */
 export function tripDays(t) {
@@ -46,6 +48,97 @@ const sortIt = (a, b) => {
   return x - y || (a.order || 0) - (b.order || 0);
 };
 
+/* ───────── 調整順序 ───────── */
+let reorder = null; // { tripId, day, ids }
+export const isBusy = () => !!document.getElementById('sheet') || !!reorder;
+export function resetPlanUI() { closeSheet(); reorder = null; }
+
+// 依新順序重算時間：第一個有時間的行程，開始時間不變；之後每個行程接在前一個結束之後，各自的停留時間不變
+function recompute(list) {
+  const timed = list.filter(x => toMin(x.start) !== null);
+  if (!timed.length) return list.map(x => ({ ...x, nStart: x.start || '', nEnd: x.end || '' }));
+  let cur = Math.min(...timed.map(x => toMin(x.start)));
+  return list.map(x => {
+    const d = durOf(x) ?? 0;
+    const r = { ...x, nStart: fmtMin(cur), nEnd: d > 0 ? fmtMin(cur + d) : '', over: cur + d >= 24 * 60 };
+    cur += d;
+    return r;
+  });
+}
+function renderReorder(ctx, t, days, day) {
+  const all = cache[t.id]?.items || [];
+  const byId = Object.fromEntries(all.map(x => [x.id, x]));
+  reorder.ids = reorder.ids.filter(id => byId[id]);
+  const rows = () => recompute(reorder.ids.map(id => byId[id]));
+  const draw = () => {
+    const rs = rows();
+    const over = rs.some(r => r.over);
+    $('#planBody').innerHTML = `
+      <div class="dayhead"><h2 class="title">${day === 0 ? '備案' : `Day ${day}`}・調整順序</h2></div>
+      <p class="small muted" style="margin:0">按住左邊的 ${ic.grip} 拖曳，或用右邊的箭頭上下移動。${day === 0 ? '' : '時間會自動重算：第一個行程的開始時間不變，後面依序接上，每個行程的停留時間不變。'}</p>
+      <ol class="ro-list" id="roList">${rs.map((r, i) => `<li class="ro-item" data-id="${esc(r.id)}">
+          <span class="ro-grip" aria-hidden="true">${ic.grip}</span>
+          <span class="ro-time num">${esc(r.nStart || '—')}${r.nEnd ? `<small>${esc(r.nEnd)}</small>` : ''}</span>
+          <span class="ro-title"><b>${esc(r.title)}</b>${durOf(r) ? `<small class="tiny faint">${durOf(r)} 分</small>` : ''}</span>
+          <span class="ro-btns">
+            <button class="iconbtn" data-up="${i}" aria-label="把「${esc(r.title)}」往上移" ${i === 0 ? 'disabled' : ''}>${ic.up}</button>
+            <button class="iconbtn" data-down="${i}" aria-label="把「${esc(r.title)}」往下移" ${i === rs.length - 1 ? 'disabled' : ''}>${ic.down}</button>
+          </span></li>`).join('')}</ol>
+      ${over ? '<p class="warn" role="alert">重算後有行程超過午夜 24:00，請調整順序或縮短停留時間。</p>' : ''}
+      <div class="grid2"><button class="btn" id="roCancel">取消</button><button class="btn pri" id="roSave" ${over ? 'disabled' : ''}>完成</button></div>`;
+    bind();
+  };
+  const bind = () => {
+    $$('[data-up]').forEach(b => b.addEventListener('click', () => { const i = +b.dataset.up; [reorder.ids[i - 1], reorder.ids[i]] = [reorder.ids[i], reorder.ids[i - 1]]; draw(); $(`[data-up="${i - 1}"]`)?.focus() || $(`[data-down="${i - 1}"]`)?.focus(); }));
+    $$('[data-down]').forEach(b => b.addEventListener('click', () => { const i = +b.dataset.down; [reorder.ids[i + 1], reorder.ids[i]] = [reorder.ids[i], reorder.ids[i + 1]]; draw(); $(`[data-down="${i + 1}"]`)?.focus() || $(`[data-up="${i + 1}"]`)?.focus(); }));
+    $('#roCancel').addEventListener('click', () => { reorder = null; renderPlan(ctx, t); });
+    $('#roSave').addEventListener('click', () => {
+      const rs = rows();
+      rs.forEach((r, i) => {
+        const orig = byId[r.id];
+        if (orig.start === r.nStart && orig.end === r.nEnd && orig.order === i) return;
+        updateDoc(doc(ctx.S.db, 'trips', t.id, 'items', r.id), { start: r.nStart, end: r.nEnd, order: i, updatedBy: ctx.S.user.uid, updatedAt: serverTimestamp() })
+          .catch(e => toast('儲存失敗：' + (e?.code || e?.message)));
+        Object.assign(orig, { start: r.nStart, end: r.nEnd, order: i }); // 先更新畫面，不用等伺服器
+      });
+      reorder = null; toast('順序已更新'); renderPlan(ctx, t);
+    });
+    // 拖曳（滑鼠、手指都可以）
+    const list = $('#roList');
+    $$('.ro-grip', list).forEach(g => g.addEventListener('pointerdown', e => {
+      const li = g.closest('.ro-item'); e.preventDefault();
+      // 拖曳時元素會在清單裡移動，指標捕捉會失效，所以改在整個視窗監聽
+      li.classList.add('dragging');
+      let lastY = e.clientY, raf = 0;
+      const move = ev => {
+        lastY = ev.clientY;
+        const others = $$('.ro-item', list).filter(x => x !== li);
+        const target = others.find(x => { const r = x.getBoundingClientRect(); return lastY < r.top + r.height / 2; });
+        if (target) { if (li.nextElementSibling !== target) list.insertBefore(li, target); }
+        else if (list.lastElementChild !== li) list.appendChild(li);
+        // 拖到畫面邊緣時自動捲動
+        cancelAnimationFrame(raf);
+        const edge = () => { const dy = lastY < 90 ? -8 : lastY > innerHeight - 130 ? 8 : 0; if (dy) { scrollBy(0, dy); raf = requestAnimationFrame(edge); } };
+        edge();
+        // 即時預覽新的時間
+        const ids = $$('.ro-item', list).map(x => x.dataset.id);
+        recompute(ids.map(id => byId[id])).forEach(r => {
+          const tEl = $(`.ro-item[data-id="${CSS.escape(r.id)}"] .ro-time`, list);
+          if (tEl) tEl.innerHTML = `${esc(r.nStart || '—')}${r.nEnd ? `<small>${esc(r.nEnd)}</small>` : ''}`;
+        });
+      };
+      const up = () => {
+        cancelAnimationFrame(raf);
+        removeEventListener('pointermove', move); removeEventListener('pointerup', up); removeEventListener('pointercancel', up);
+        reorder.ids = $$('.ro-item', list).map(x => x.dataset.id);
+        draw();
+      };
+      addEventListener('pointermove', move); addEventListener('pointerup', up); addEventListener('pointercancel', up);
+    }));
+  };
+  draw();
+}
+
 /* ───────── 即時資料 ───────── */
 const cache = {}; // tripId → { items, unsub }
 export function watchItems(ctx, tripId, onChange) {
@@ -73,6 +166,8 @@ export function renderPlan(ctx, t) {
   day = day === null ? (todayDay || 1) : +day;
   if (day !== 0 && !days.some(d => d.d === day)) day = 1;
   const items = (cache[t.id]?.items || []).filter(x => x.day === day).sort(sortIt);
+  if (reorder && reorder.tripId === t.id && reorder.day === day) return renderReorder(ctx, t, days, day);
+  reorder = null;
   const dinfo = days.find(d => d.d === day);
   const marks = dinfo ? nowMarks(items, dinfo.date, t.tz) : {};
   const japan = (t.places || []).some(p => p.country === 'JP');
@@ -87,7 +182,8 @@ export function renderPlan(ctx, t) {
       <button class="daychip" aria-pressed="${day === 0}" data-day="0"><b>備案</b><span>口袋名單</span></button>
     </nav>
     <div class="dayhead"><h2 class="title">${day === 0 ? '備案' : `Day ${day}`}</h2>
-      <span class="small muted">${dinfo ? `${dinfo.date.replace(/-/g, '/')}（${dinfo.w}）・當地時間 ${esc(tzNote)}` : '有空檔或天氣不好時的選擇'}</span></div>
+      <span class="small muted" style="flex:1">${dinfo ? `${dinfo.date.replace(/-/g, '/')}（${dinfo.w}）・當地時間 ${esc(tzNote)}` : '有空檔或天氣不好時的選擇'}</span>
+      ${items.length >= 2 ? `<button class="btn sm" id="roStart">${ic.sort}調整順序</button>` : ''}</div>
     ${body}
     <button class="btn full" id="addIt">${ic.plus}新增${day === 0 ? '備案' : '行程'}</button>`;
   $('#daybar').addEventListener('click', e => {
@@ -95,6 +191,7 @@ export function renderPlan(ctx, t) {
     localSet(key, b.dataset.day); renderPlan(ctx, t); centerDay(true);
   });
   $('#addIt').addEventListener('click', () => editItem(ctx, t, null, day, japan));
+  $('#roStart')?.addEventListener('click', () => { reorder = { tripId: t.id, day, ids: items.map(x => x.id) }; renderPlan(ctx, t); });
   $$('[data-edit]').forEach(b => b.addEventListener('click', () => editItem(ctx, t, (cache[t.id].items || []).find(x => x.id === b.dataset.edit), day, japan)));
   $$('[data-copy]').forEach(b => b.addEventListener('click', () => copyText(b.dataset.copy)));
   centerDay(false);
@@ -184,6 +281,10 @@ function editItem(ctx, t, x, day, japan) {
       <label class="field"><span>開始</span><input class="input" type="time" step="300" id="fStart" value="${esc(x.start)}"></label>
       <label class="field"><span>結束（選填）</span><input class="input" type="time" step="300" id="fEnd" value="${esc(x.end)}"></label>
     </div>
+    <div class="field"><label for="fDur" id="fDurLbl">${x.kind === 'move' ? '車程時間' : '停留時間'}（分鐘，選填）</label>
+      <div class="dur-row"><input class="input" type="number" inputmode="numeric" min="0" max="1440" step="5" id="fDur" value="${durOf(x) ?? ''}" placeholder="例如 60">
+        <div class="dur-chips" role="group" aria-label="快速選擇分鐘">${[15, 30, 60, 90, 120].map(m => `<button type="button" class="btn sm" data-dur="${m}">${m}</button>`).join('')}</div></div>
+    </div>
     <p class="tiny" id="fMins" style="margin:-4px 2px 0;min-height:1em"></p>
     <label class="field"><span>備註（一行一點）</span><textarea class="input" id="fNote" rows="3" maxlength="2000">${esc(x.note)}</textarea></label>
     <label class="field"><span>金額（參考，選填）</span><input class="input" id="fPrice" value="${esc(x.price)}" maxlength="40" placeholder="例如 ¥2,000／人"></label>
@@ -192,16 +293,29 @@ function editItem(ctx, t, x, day, japan) {
     ${japan || x.mapcode ? `<label class="field"><span>Mapcode（日本自駕導航用，選填）</span><input class="input" id="fMc" value="${esc(x.mapcode)}" maxlength="30" inputmode="numeric" placeholder="例如 553 075 797*77"></label>` : ''}
     ${!isNew && who ? `<p class="tiny faint" style="margin:0">最後修改：${esc(who)}${when ? `・${when.getMonth() + 1}/${when.getDate()} ${String(when.getHours()).padStart(2, '0')}:${String(when.getMinutes()).padStart(2, '0')}` : ''}</p>` : ''}
     <div class="sheet-acts">${isNew ? '' : '<button class="btn danger" id="fDel">刪除</button>'}<button class="btn pri" id="fSave">儲存</button></div>`, s => {
+    const fS = $('#fStart', s), fE = $('#fEnd', s), fD = $('#fDur', s);
     const upd = () => {
-      const a = toMin($('#fStart', s).value), b = toMin($('#fEnd', s).value);
+      const a = toMin(fS.value), b = toMin(fE.value);
       const bad = b !== null && (a === null || b < a), mm = $('#fMins', s);
-      mm.textContent = bad ? (a === null ? '有結束時間時，請先填開始時間' : '結束時間不能早於開始時間') : a !== null && b !== null && b > a ? `共 ${b - a} 分鐘` : '';
+      mm.textContent = bad ? (a === null ? '有結束時間時，請先填開始時間' : '結束時間不能早於開始時間')
+        : a !== null && b !== null && b > a ? `${fmtMin(a)} – ${fmtMin(b)}，共 ${b - a} 分鐘` : fD.value && a === null ? '填了開始時間，就會自動算出結束時間' : '';
       mm.style.color = bad ? 'var(--danger)' : 'var(--ink3)';
+      $$('[data-dur]', s).forEach(c => c.setAttribute('aria-pressed', String(+c.dataset.dur === +fD.value)));
       const q = $('#fMap', s).value.trim();
       $('#fMapTest', s).href = q ? mapsSearch(q) : '#';
       $('#fMapTest', s).classList.toggle('hidden', !q);
     };
-    ['#fStart', '#fEnd', '#fMap'].forEach(id => $(id, s).addEventListener('input', upd)); upd();
+    // 開始＋分鐘 → 自動算結束；改結束 → 自動算分鐘
+    const fromDur = () => {
+      const a = toMin(fS.value), d = parseInt(fD.value, 10);
+      if (a !== null && d >= 0) fE.value = fmtMin(Math.min(a + d, 23 * 60 + 59));
+    };
+    fS.addEventListener('input', () => { if (fD.value !== '') fromDur(); upd(); });
+    fD.addEventListener('input', () => { if (fD.value === '') fE.value = ''; else fromDur(); upd(); });
+    fE.addEventListener('input', () => { const a = toMin(fS.value), b = toMin(fE.value); fD.value = a !== null && b !== null && b >= a ? b - a : ''; upd(); });
+    $$('[data-dur]', s).forEach(c => c.addEventListener('click', () => { fD.value = c.dataset.dur; fromDur(); upd(); }));
+    $('#fKind', s).addEventListener('change', e => { $('#fDurLbl', s).textContent = `${e.target.value === 'move' ? '車程時間' : '停留時間'}（分鐘，選填）`; });
+    $('#fMap', s).addEventListener('input', upd); upd();
     $('#fSave', s).addEventListener('click', () => {
       const v = id => ($(id, s)?.value || '').trim();
       const title = v('#fTitle'); if (!title) { toast('請填寫行程項目'); return; }

@@ -112,7 +112,8 @@ input[type=date].input { min-width: 0; padding: 0 10px; }
 .place-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .place-row select { flex: 0 0 120px; }
 .place-row input { flex: 1 1 120px; min-width: 0; }
-select.input { appearance: auto; padding-right: 8px; }
+select.input { appearance: none; -webkit-appearance: none; padding: 0 40px 0 14px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%234F5B6E' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 14px center; background-size: 14px; text-overflow: ellipsis; }
+[data-theme="dark"] select.input { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23B6BDC8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); }
 .invite { display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: var(--r-btn); background: var(--sunk); }
 .code { font-size: 28px; letter-spacing: 4px; line-height: 1.1; }
 .ellip { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -155,6 +156,18 @@ textarea.input { min-height: 84px; padding: 10px 14px; line-height: 1.6; resize:
 .it.move .acts { padding-left: 28px; }
 .tiny svg, .small svg { vertical-align: -2px; margin-right: 2px; }
 
+/* 調整順序 */
+.ro-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.ro-item { display: flex; align-items: center; gap: 8px; background: var(--card); border: 1.5px solid var(--line); border-radius: var(--r-btn); padding: 4px 4px 4px 0; user-select: none; -webkit-user-select: none; }
+.ro-item.dragging { border: 2px solid var(--acc); box-shadow: var(--shadow); opacity: .95; }
+.ro-grip { width: 44px; min-height: 52px; display: flex; align-items: center; justify-content: center; color: var(--ink3); cursor: grab; touch-action: none; flex-shrink: 0; }
+.ro-item.dragging .ro-grip { cursor: grabbing; color: var(--ink); }
+.ro-time { width: 48px; flex-shrink: 0; display: flex; flex-direction: column; font-weight: 800; font-size: 15px; }
+.ro-time small { font-size: 11px; color: var(--ink3); font-weight: 700; }
+.ro-title { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ro-title b { font-size: 14.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ro-btns { display: flex; }
+.iconbtn:disabled { opacity: .3; cursor: default; }
 /* 底部彈出視窗 */
 .sheet-bg { position: fixed; inset: 0; z-index: 50; background: rgba(10, 14, 20, .45); display: flex; align-items: flex-end; justify-content: center; }
 .sheet { width: 100%; max-width: 560px; max-height: 92dvh; overflow-y: auto; background: var(--bg); border-radius: 22px 22px 0 0; padding: 18px 18px calc(18px + var(--safe-b)); display: flex; flex-direction: column; gap: 14px; }
@@ -165,7 +178,12 @@ textarea.input { min-height: 84px; padding: 10px 14px; line-height: 1.6; resize:
 
 /* 表單 */
 .field { display: flex; flex-direction: column; gap: 6px; }
-.field > span { font-size: 13px; font-weight: 700; color: var(--ink2); }
+.field > span, .field > label { font-size: 13px; font-weight: 700; color: var(--ink2); }
+.dur-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.dur-row .input { flex: 0 0 104px; }
+.dur-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.dur-chips .btn { min-width: 44px; padding: 0 10px; font-family: var(--f-num); }
+.dur-chips .btn[aria-pressed="true"] { background: var(--acc-soft); border-color: var(--acc); color: var(--sel-ink); }
 .input { min-height: 48px; padding: 0 14px; border-radius: 12px; border: 1.5px solid var(--line2); background: var(--card); font-size: 16px; width: 100%; }
 .input:focus, .btn:focus-visible, .opt:focus-visible, .seg button:focus-visible, .iconbtn:focus-visible { outline: 2.5px solid var(--acc); outline-offset: 2px; }
 .seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 8px; }

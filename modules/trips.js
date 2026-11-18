@@ -4,11 +4,11 @@ import { doc, collection, query, where, onSnapshot, getDoc, setDoc, updateDoc, d
 import { $, $$, esc, ic, toast, copyText, localGet, localSet } from './ui.js';
 import { avatarHTML } from './profile.js';
 import { adjustForPeers } from './color.js';
-import { renderPlan, watchItems } from './plan.js';
+import { renderPlan, watchItems, isBusy } from './plan.js';
 import { COUNTRIES, countryBy, CURRENCIES, CUR_NAME, timeZones, todayIn, dayCount, tripStatus, STATUS_LABEL,
   fmtRange, placesText } from './places.js';
 
-export const APP_VERSION = 'v0.3';
+export const APP_VERSION = 'v0.3.1';
 const OTHER = 'OT'; // 清單以外的國家
 const INVITE_DAYS = 7;
 
@@ -149,7 +149,7 @@ export function renderTripForm(ctx, tripId) {
     form = editing
       ? { id: tripId, name: editing.name, places: JSON.parse(JSON.stringify(editing.places)), start: editing.start, end: editing.end,
           currency: editing.currency, tz: editing.tz, settleCurrency: editing.settleCurrency || 'TWD' }
-      : { id: 'new', name: '', places: [{ country: 'JP', city: '' }], start: '', end: '', currency: 'JPY', tz: 'Asia/Tokyo', settleCurrency: 'TWD', autoFill: true };
+      : { id: 'new', name: '', places: [{ country: 'TW', city: '' }], start: '', end: '', currency: 'TWD', tz: 'Asia/Taipei', settleCurrency: 'TWD', autoFill: true };
   }
   const f = form;
   const tzs = timeZones();
@@ -441,7 +441,7 @@ export function renderTripPlan(ctx, id) {
   if (!unsubs.planFor || unsubs.planFor !== id) {
     unsubs.planFor = id;
     unsubs.push(watchItems(ctx, id, () => {
-      if (location.hash !== `#/trip/${id}/plan` || document.getElementById('sheet')) return;
+      if (location.hash !== `#/trip/${id}/plan` || isBusy()) return;
       const cur = (S.trips || []).find(x => x.id === id); if (cur) renderPlan(ctx, cur);
     }));
   }

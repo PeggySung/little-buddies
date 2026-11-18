@@ -38,6 +38,10 @@ export const ic = {
   ticket: svg('<path d="M4 8a2 2 0 0 0 2-2h12a2 2 0 0 0 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 0-2 2H6a2 2 0 0 0-2-2v-2a2 2 0 0 0 0-4zM10 6v12"/>', 20),
   list: svg('<path d="M9 7h11M9 12h11M9 17h11M4.5 7l1 1 2-2M4.5 12l1 1 2-2M4.5 17l1 1 2-2"/>', 20),
   money: svg('<path d="M4 7h16v11H4zM4 10.5h16M8 14.5h3"/>', 20),
+  sort: svg('<path d="M8 4v16M4.5 7.5 8 4l3.5 3.5M16 20V4M12.5 16.5 16 20l3.5-3.5"/>', 16),
+  grip: svg('<circle cx="9" cy="6" r="1.3"/><circle cx="15" cy="6" r="1.3"/><circle cx="9" cy="12" r="1.3"/><circle cx="15" cy="12" r="1.3"/><circle cx="9" cy="18" r="1.3"/><circle cx="15" cy="18" r="1.3"/>', 20),
+  up: svg('<path d="M6 15l6-6 6 6"/>', 20, 2.2),
+  down: svg('<path d="M6 9l6 6 6-6"/>', 20, 2.2),
   // 測驗選項
   sunset: svg('<path d="M3 17h18M6.5 17a5.5 5.5 0 0 1 11 0M12 6.5V4.5M6.3 9.3 4.9 7.9M17.7 9.3l1.4-1.4M7 20.5h10"/>'),
   flower: svg('<path d="M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>'),

@@ -1,5 +1,6 @@
 // 國家清單：選了國家就自動帶入幣別和時區（都可以再改）
 export const COUNTRIES = [
+  { code: 'TW', name: '台灣', en: 'TAIWAN', cur: 'TWD', tz: 'Asia/Taipei' },
   { code: 'JP', name: '日本', en: 'JAPAN', cur: 'JPY', tz: 'Asia/Tokyo' },
   { code: 'KR', name: '韓國', en: 'KOREA', cur: 'KRW', tz: 'Asia/Seoul' },
   { code: 'TH', name: '泰國', en: 'THAILAND', cur: 'THB', tz: 'Asia/Bangkok' },
@@ -11,7 +12,6 @@ export const COUNTRIES = [
   { code: 'HK', name: '香港', en: 'HONG KONG', cur: 'HKD', tz: 'Asia/Hong_Kong' },
   { code: 'MO', name: '澳門', en: 'MACAU', cur: 'MOP', tz: 'Asia/Macau' },
   { code: 'CN', name: '中國', en: 'CHINA', cur: 'CNY', tz: 'Asia/Shanghai' },
-  { code: 'TW', name: '台灣', en: 'TAIWAN', cur: 'TWD', tz: 'Asia/Taipei' },
   { code: 'US', name: '美國', en: 'USA', cur: 'USD', tz: 'America/Los_Angeles' },
   { code: 'CA', name: '加拿大', en: 'CANADA', cur: 'CAD', tz: 'America/Vancouver' },
   { code: 'GB', name: '英國', en: 'UK', cur: 'GBP', tz: 'Europe/London' },
