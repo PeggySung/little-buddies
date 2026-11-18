@@ -15,10 +15,12 @@ const KINDS = {
   bus: { label: '巴士', group: 'go', mode: 'transit' },
   flight: { label: '飛機', group: 'go' }
 };
+// 圖示換新版時改這個號碼，手機上的舊快取就不會被拿來用
+export const ICON_VER = 'line1';
 const isGo = k => KINDS[k]?.group === 'go';
 // 舊資料：類型是「移動」但標題寫步行，當成步行
 const kindOf = x => (x.kind === 'move' && /步行|走路/.test(x.title || '') ? 'walk' : (KINDS[x.kind] ? x.kind : 'spot'));
-const kindImg = (x, cls = '') => { const k = kindOf(x); return `<span class="kind ${cls} ${isGo(k) ? 'go' : ''}" aria-hidden="true"><span class="kmask" style="--k:url(img/kinds/${k}.webp)"></span></span>`; };
+const kindImg = (x, cls = '') => { const k = kindOf(x); return `<span class="kind ${cls} ${isGo(k) ? 'go' : ''}" aria-hidden="true"><span class="kmask" style="--k:url(img/kinds/${k}.webp?v=${ICON_VER})"></span></span>`; };
 const durLabel = k => `${isGo(k) ? '車程時間' : '停留時間'}（分鐘，選填）`;
 const W = ['日', '一', '二', '三', '四', '五', '六'];
 const mapsSearch = q => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
