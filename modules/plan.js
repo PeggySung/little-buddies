@@ -2,6 +2,7 @@
 import { doc, collection, onSnapshot, setDoc, updateDoc, deleteDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { $, $$, esc, ic, toast, copyText, localGet, localSet } from './ui.js';
 import { todayIn, dayCount, tripStatus } from './places.js';
+import { bookingEvents } from './book.js';
 
 // 類型：圖示在 img/kinds/（Gemini 畫的線條圖示，用遮罩上色，顏色跟著深淺色主題）
 const KINDS = {
@@ -20,7 +21,8 @@ export const ICON_VER = 'line1';
 const isGo = k => KINDS[k]?.group === 'go';
 // 舊資料：類型是「移動」但標題寫步行，當成步行
 const kindOf = x => (x.kind === 'move' && /步行|走路/.test(x.title || '') ? 'walk' : (KINDS[x.kind] ? x.kind : 'spot'));
-const kindImg = (x, cls = '') => { const k = kindOf(x); return `<span class="kind ${cls} ${isGo(k) ? 'go' : ''}" aria-hidden="true"><span class="kmask" style="--k:url(img/kinds/${k}.webp?v=${ICON_VER})"></span></span>`; };
+export const kindIcon = (k, go, cls = '') => `<span class="kind ${cls} ${go ? 'go' : ''}" aria-hidden="true"><span class="kmask" style="--k:url(img/kinds/${k}.webp?v=${ICON_VER})"></span></span>`;
+const kindImg = (x, cls = '') => { const k = kindOf(x); return kindIcon(k, isGo(k), cls); };
 const durLabel = k => `${isGo(k) ? '車程時間' : '停留時間'}（分鐘，選填）`;
 const W = ['日', '一', '二', '三', '四', '五', '六'];
 const mapsSearch = q => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
@@ -194,9 +196,12 @@ export function renderPlan(ctx, t, sortDay = null) {
   reorder = null;
   const dinfo = days.find(d => d.d === day);
   const marks = dinfo ? nowMarks(items, dinfo.date, t.tz) : {};
+  const evs = dinfo ? bookingEvents(t.id, dinfo.date) : [];
   const japan = (t.places || []).some(p => p.country === 'JP');
   const body = cache[t.id]?.items == null ? '<div class="spinner" style="margin:30px auto" role="status" aria-label="載入中"></div>'
-    : items.length ? `<div class="timeline">${items.map(x => itemHTML(x, marks)).join('')}</div>`
+    : (items.length || evs.length) ? `<div class="timeline">${[...items.map(x => ({ x })), ...evs.map(e => ({ e }))]
+        .sort((a, b) => sortIt(a.x || { start: a.e.start, order: -1 }, b.x || { start: b.e.start, order: -1 }))
+        .map(r => (r.x ? itemHTML(r.x, marks) : evHTML(t, r.e))).join('')}</div>`
     : `<div class="card empty"><p class="small muted" style="margin:0">${day === 0 ? '還沒有備案。可以放「有空再去」或「下雨時的替代方案」。' : '這天還沒有行程。'}</p></div>`;
   const tzNote = (() => { try { return new Intl.DateTimeFormat('zh-TW', { timeZone: t.tz, timeZoneName: 'short' }).formatToParts(new Date()).find(p => p.type === 'timeZoneName')?.value || t.tz; } catch { return t.tz; } })();
   $('#planBody').innerHTML = `
@@ -267,6 +272,17 @@ function itemHTML(x, marks) {
       ${notes.length ? `<div class="notes">${notes.map(n => `<p>${esc(n)}</p>`).join('')}</div>` : ''}
       ${x.map || mc ? `<div class="acts">${x.map ? `<a class="btn sm" href="${mapsSearch(x.map)}" target="_blank" rel="noopener">${ic.map}地圖</a><a class="btn sm pri" href="${mapsDir(x.map)}" target="_blank" rel="noopener">${ic.nav}導航</a>` : ''}${mc}</div>` : ''}
     </div></div>`;
+}
+
+// 交通住宿自動帶進來的卡片（不能在這裡編輯，點了跳到交通住宿）
+function evHTML(t, e) {
+  return `<a class="it ev" href="#/trip/${esc(t.id)}/book/${esc(e.bid)}" aria-label="${esc(e.title)}，到交通住宿查看">
+    <div class="t"><span class="num">${esc(e.start || '—')}</span>${e.end ? `<small class="num">${esc(e.end)}</small>` : ''}</div>
+    <div class="it-card ev-card">
+      <div class="row" style="align-items:center;gap:10px">${kindIcon(e.icon, e.go, 'sm')}
+        <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px"><b style="font-size:14.5px">${esc(e.title)}</b>${e.sub ? `<span class="tiny muted ellip">${esc(e.sub)}</span>` : ''}</div>
+        <span class="chip muted-chip">交通住宿</span></div>
+    </div></a>`;
 }
 
 /* ───────── 底部彈出視窗 ───────── */

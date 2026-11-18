@@ -5,10 +5,11 @@ import { $, $$, esc, ic, toast, copyText, localGet, localSet } from './ui.js';
 import { avatarHTML } from './profile.js';
 import { adjustForPeers } from './color.js';
 import { renderPlan, watchItems, isBusy, exitSort } from './plan.js';
+import { renderBook, watchBookings } from './book.js';
 import { COUNTRIES, countryBy, CURRENCIES, CUR_NAME, timeZones, todayIn, dayCount, tripStatus, STATUS_LABEL,
   fmtRange, placesText } from './places.js';
 
-export const APP_VERSION = 'v0.3.4';
+export const APP_VERSION = 'v0.4';
 const OTHER = 'OT';
 // 旅程裡的分頁（資訊、行程…）是同一層，左上角放回首頁的 logo；點進去的細項頁才用「上一頁」箭頭
 const homeBtn = `<a class="iconbtn home-btn" href="#/" aria-label="回首頁（旅程列表）" style="margin-left:-6px"><img src="img/icon-192.png" alt="" width="32" height="32"></a>`; // 清單以外的國家
@@ -418,7 +419,7 @@ export async function renderJoin(ctx, code) {
 
 /* ───────── 旅程分頁列 ───────── */
 function tabBar(id, active) {
-  const tabs = [['info', '資訊', `#/trip/${id}`], ['trip', '行程', `#/trip/${id}/plan`], ['ticket', '交通住宿', ''], ['list', '清單', ''], ['money', '記帳', '']];
+  const tabs = [['info', '資訊', `#/trip/${id}`], ['trip', '行程', `#/trip/${id}/plan`], ['ticket', '交通住宿', `#/trip/${id}/book`], ['list', '清單', ''], ['money', '記帳', '']];
   return `<nav class="tabbar" aria-label="旅程分頁">${tabs.map(([k, l, href]) => href
     ? `<a href="${href}" class="${active === k ? 'on' : ''}" ${active === k ? 'aria-current="page"' : ''}><span class="pill">${ic[k]}</span>${l}</a>`
     : `<button type="button" class="soon" data-soon="${l}"><span class="pill">${ic[k]}</span>${l}</button>`).join('')}</nav>`;
@@ -445,11 +446,41 @@ export function renderTripPlan(ctx, id, sortDay = null) {
   renderPlan(ctx, t, sortDay);
   if (!unsubs.planFor || unsubs.planFor !== id) {
     unsubs.planFor = id;
+    const re = () => {
+      if (isBusy()) return;
+      const cur = (S.trips || []).find(x => x.id === id); if (!cur) return;
+      const m = location.hash.match(/\/plan(?:\/sort\/(\d+))?$/);
+      if (location.hash.startsWith(`#/trip/${id}/plan`) && m) renderPlan(ctx, cur, m[1] != null ? +m[1] : null);
+    };
+    unsubs.push(watchBookings(ctx, id, re));
     unsubs.push(watchItems(ctx, id, () => {
       if (isBusy()) return;
       const cur = (S.trips || []).find(x => x.id === id); if (!cur) return;
       const m = location.hash.match(/\/plan(?:\/sort\/(\d+))?$/);
       if (location.hash.startsWith(`#/trip/${id}/plan`) && m) renderPlan(ctx, cur, m[1] != null ? +m[1] : null);
+    }));
+  }
+}
+
+/* ───────── 交通住宿頁 ───────── */
+export function renderTripBook(ctx, id, focusId = null) {
+  const { S } = ctx;
+  const t = (S.trips || []).find(x => x.id === id);
+  if (!t || !(t.memberUids || []).includes(S.user.uid)) {
+    $('#main').innerHTML = `<div class="wrap">${ctx.topBar(homeBtn)}${S.trips ? '<section class="card"><b>找不到這趟旅程</b><p class="small muted" style="margin:0">可能已經被刪除，或你不是這趟旅程的成員。</p></section>' : '<div class="spinner" style="margin:40px auto"></div>'}</div>`;
+    ctx.bindTop(); return;
+  }
+  $('#main').innerHTML = `<div class="wrap has-tabs">${ctx.topBar(`<div class="row" style="gap:4px;min-width:0">${homeBtn}
+      <div style="min-width:0"><div class="title ellip" style="font-size:17px">${esc(t.name)}</div><div class="tiny faint ellip">${esc(placesText(t.places))}</div></div></div>`)}
+    <div id="bookBody" style="display:flex;flex-direction:column;gap:14px"></div>
+  </div>${tabBar(id, 'ticket')}`;
+  ctx.bindTop(); bindTabs();
+  renderBook(ctx, t, focusId);
+  if (unsubs.bookFor !== id) {
+    unsubs.bookFor = id;
+    unsubs.push(watchBookings(ctx, id, () => {
+      if (isBusy() || !location.hash.startsWith(`#/trip/${id}/book`)) return;
+      const cur = (S.trips || []).find(x => x.id === id); if (cur) renderBook(ctx, cur);
     }));
   }
 }
