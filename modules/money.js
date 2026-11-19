@@ -263,7 +263,7 @@ export function renderMoney(ctx, t) {
   if (tab === 'settle' && solo) tab = 'list';
   const tabs = [['list', '明細'], ...(solo ? [] : [['settle', '結算']]), ['proxy', '代購']];
   host.innerHTML = `<div class="dayhead"><h2 class="title">記帳</h2></div>
-    ${tabs.length > 1 ? `<div class="seg" role="group" aria-label="記帳分頁">${tabs.map(([k, l]) => `<button type="button" data-mtab="${k}" aria-pressed="${tab === k}">${l}</button>`).join('')}</div>` : ''}
+    ${tabs.length > 1 ? `<div class="utabs" role="tablist" aria-label="記帳分頁">${tabs.map(([k, l]) => `<button type="button" role="tab" data-mtab="${k}" aria-selected="${tab === k}">${l}</button>`).join('')}</div>` : ''}
     ${tab === 'settle' ? settleHTML(t, list, c.settle) : tab === 'proxy' ? proxyHTML(t, list, me) : listHTML(t, list, me, solo)}`;
   $$('[data-mtab]', host).forEach(b => b.addEventListener('click', () => { localSet('mntab:' + t.id, b.dataset.mtab); renderMoney(ctx, t); window.scrollTo(0, 0); }));
   $$('[data-ex]', host).forEach(b => b.addEventListener('click', () => editExpense(ctx, t, list.find(e => e.id === b.dataset.ex))));

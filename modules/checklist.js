@@ -140,9 +140,9 @@ export function renderChecklist(ctx, t) {
   const catAll = c => shown.filter(x => (x.cat || '其他') === c).every(x => itemDone(t, x));
   const pct = myItems.length ? Math.round(myDone / myItems.length * 100) : 0;
   const bar = (p, label) => `<div class="bar" role="progressbar" aria-valuenow="${p}" aria-valuemin="0" aria-valuemax="100" aria-label="${esc(label)}"><i style="width:${p}%"></i></div>`;
-  const seg = `<div class="seg" role="group" aria-label="顯示">
-      <button type="button" data-view="mine" aria-pressed="${view === 'mine'}">我的（${myItems.length}）</button>
-      <button type="button" data-view="all" aria-pressed="${view === 'all'}">全部・團隊（${list.length}）</button>
+  const seg = `<div class="utabs" role="tablist" aria-label="顯示">
+      <button type="button" role="tab" data-view="mine" aria-selected="${view === 'mine'}">我的<span class="n">${myItems.length}</span></button>
+      <button type="button" role="tab" data-view="all" aria-selected="${view === 'all'}">全部・團隊<span class="n">${list.length}</span></button>
     </div>`;
   const mineCard = `<section class="card" style="gap:8px">
       <div class="row" style="justify-content:space-between"><b>我的進度</b><span class="num">${myDone} / ${myItems.length}</span></div>
@@ -150,7 +150,6 @@ export function renderChecklist(ctx, t) {
       <span class="tiny faint">只列出你要準備的項目，和還沒人認領的共用物品</span>
     </section>`;
   host.innerHTML = `
-    <div class="dayhead"><h2 class="title">準備清單</h2></div>
     ${list.length ? seg + (view === 'mine' ? mineCard : teamCard(t, list, me, bar)) : ''}
     ${cats.length > 1 ? `<button type="button" class="linkbtn fold-all" id="ckFoldAll">${cats.every(c => isFolded(fold, c, catAll(c))) ? '全部展開' : '全部收合'}</button>` : ''}
     ${!list.length ? `<div class="card empty"><p class="small muted" style="margin:0">還沒有清單。可以從範本一次加入常用項目，再刪掉不需要的，或自己一項一項新增。</p>

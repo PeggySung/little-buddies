@@ -241,6 +241,18 @@ div.sh-main { cursor: default; }
 .sh-big img { max-width: 100%; max-height: 70dvh; object-fit: contain; display: block; }
 .sh-photo { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .sh-photo img { width: 96px; height: 96px; object-fit: cover; border-radius: 12px; border: 1.5px solid var(--line); }
+.ttabs { display: flex; gap: 20px; align-items: baseline; margin-top: 2px; }
+.ttabs button { padding: 4px 0; border: 0; background: none; font-family: var(--f-title); font-size: 22px; font-weight: 400; color: var(--ink3); cursor: pointer; }
+.ttabs button[aria-selected="true"] { color: var(--ink); }
+.ttabs button:focus-visible { outline: 2.5px solid var(--acc); outline-offset: 3px; border-radius: 6px; }
+.utabs { display: flex; border-bottom: 1.5px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+.utabs::-webkit-scrollbar { display: none; }
+.utabs button { flex: 1 0 auto; min-height: 46px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 12px; border: 0; border-bottom: 3px solid transparent; margin-bottom: -1.5px; background: none; color: var(--ink3); font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.utabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--pri); }
+.utabs button:focus-visible { outline: 2.5px solid var(--acc); outline-offset: -3px; border-radius: 8px; }
+.utabs .n { font-family: var(--f-num); font-size: 12px; font-weight: 800; padding: 1px 7px; border-radius: 999px; background: var(--sunk); color: var(--ink3); }
+.utabs button[aria-selected="true"] .n { background: var(--acc-soft); color: var(--sel-ink); }
+.utabs.who button { flex: 0 0 auto; padding: 0 10px; }
 .brk { overflow-wrap: anywhere; min-width: 0; }
 .title { overflow-wrap: anywhere; }
 .stamps { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding-top: 4px; }

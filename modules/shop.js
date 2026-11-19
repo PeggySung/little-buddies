@@ -82,9 +82,9 @@ export function renderShop(ctx, t) {
   const copyable = mine ? [] : items.filter(x => !have(x));
   const cur = t.currency;
   const totAll = items.reduce((n, x) => n + lineTotal(x), 0), totLeft = items.filter(x => !x.bought).reduce((n, x) => n + lineTotal(x), 0);
-  const bar = ms.length > 1 ? `<div class="whobar" role="group" aria-label="看誰的清單">${ms.map(u => `<button type="button" data-shw="${esc(u)}" aria-pressed="${u === who}">${av(t, u, 'sm')}<span>${esc(nm(t, u))}</span><span class="tiny faint">${c.list.filter(x => x.owner === u).length}</span></button>`).join('')}</div>` : '';
-  host.innerHTML = `<div class="dayhead"><h2 class="title">${mine ? '我的購物清單' : esc(nm(t, who)) + ' 的購物清單'}</h2>${mine ? '' : '<span class="chip">只能看</span>'}</div>
-    ${bar}
+  const bar = ms.length > 1 ? `<div class="utabs who" role="tablist" aria-label="看誰的清單">${ms.map(u => `<button type="button" role="tab" data-shw="${esc(u)}" aria-selected="${u === who}">${av(t, u, 'xs')}${esc(u === me ? '我的' : nm(t, u))}<span class="n">${c.list.filter(x => x.owner === u).length}</span></button>`).join('')}</div>` : '';
+  host.innerHTML = `${bar}
+    ${mine ? '' : `<p class="tiny faint" style="margin:0">這是 ${esc(nm(t, who))} 的清單，只能看；想買一樣的可以複製到自己的清單。</p>`}
     ${!mine && copyable.length ? `<button class="btn" id="shCopyAll">${ic.copy}把 ${copyable.length} 項複製到我的清單</button>` : ''}
     ${items.length ? `<section class="card sh-card">${items.map(x => rowHTML(t, x, mine, have)).join('')}
       ${totAll ? `<div class="sh-tot"><span>預算合計 <b class="num">${money(toC(totAll), cur)}</b></span><span>還沒買 <b class="num">${money(toC(totLeft), cur)}</b></span></div>` : ''}</section>
