@@ -144,8 +144,9 @@ h1, h2, h3 { margin: 0; font-weight: 400; }
 .cat-pick { display: flex; gap: 8px; flex-wrap: wrap; }
 .cat { min-height: 44px; display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px 4px 6px; border-radius: 999px; border: 2px solid var(--line); background: var(--card); color: var(--ink2); font-weight: 700; font-size: 14px; cursor: pointer; }
 .cat[aria-pressed="true"] { background: var(--acc-soft); border-color: var(--acc); color: var(--sel-ink); }
-#eCurSeg { grid-auto-columns: minmax(0, 1fr); }
-#eCurSeg select { min-height: 46px; font-size: 15px; font-weight: 700; }
+#eCurSeg { grid-auto-flow: row; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; }
+#eCurSeg select { min-height: 46px; width: 5.6em; font-size: 13px; font-weight: 700; color: var(--ink2); padding: 0 30px 0 12px; background-position: right 10px center; }
+#eCurSeg select.on { background-color: var(--acc-soft); border-color: var(--acc); color: var(--sel-ink); }
 .input.big { font-size: 24px; min-height: 56px; font-weight: 700; }
 .amt-grid { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
 .amt-row { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(0, 9em); align-items: center; gap: 8px; }
@@ -345,7 +346,10 @@ html::-webkit-scrollbar-button { display: none; height: 0; }
 .dur-chips .btn { min-width: 44px; padding: 0 10px; font-family: var(--f-num); }
 .dur-chips .btn[aria-pressed="true"] { background: var(--acc-soft); border-color: var(--acc); color: var(--sel-ink); }
 .input { min-height: 48px; padding: 0 14px; border-radius: 12px; border: 1.5px solid var(--line2); background: var(--card); font-size: 16px; width: 100%; }
-.input:focus, .btn:focus-visible, .opt:focus-visible, .seg button:focus-visible, .iconbtn:focus-visible { outline: 2.5px solid var(--acc); outline-offset: 2px; }
+.btn:focus-visible, .opt:focus-visible, .seg button:focus-visible, .iconbtn:focus-visible { outline: 2.5px solid var(--acc); outline-offset: 2px; }
+/* 輸入框聚焦：直接把原本的框變成黃色加粗，不另外在外面畫一圈 */
+.input:focus, .t24:focus-within { outline: none; border-color: var(--acc); box-shadow: 0 0 0 1px var(--acc); }
+.t24 select:focus-visible { outline: none; background: var(--acc-soft); }
 .seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 8px; }
 .seg button { min-height: 46px; border-radius: var(--r-btn); border: 2px solid var(--line); background: var(--card); color: var(--ink2); font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 8px; }
 .seg button[aria-pressed="true"] { background: var(--acc-soft); border-color: var(--acc); color: var(--sel-ink); }

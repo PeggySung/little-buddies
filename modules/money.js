@@ -433,7 +433,7 @@ function editExpense(ctx, t, e) {
     <div id="eLock"></div>
     <div class="field"><span id="lblCur">幣別</span><div class="seg" role="group" aria-labelledby="lblCur" id="eCurSeg">
       ${curOpts.map(c => `<button type="button" data-cur="${esc(c)}" aria-pressed="${c === cur}">${esc(curName(c))}</button>`).join('')}
-      <select class="input" id="eCurOther" aria-label="其他幣別"><option value="">其他…</option>${CURRENCIES.filter(c => !curOpts.includes(c)).map(c => `<option value="${c}" ${c === cur ? 'selected' : ''}>${c} ${esc(curName(c))}</option>`).join('')}</select>
+      <select class="input ${curOpts.includes(cur) ? '' : 'on'}" id="eCurOther" aria-label="其他幣別"><option value="">其他</option>${CURRENCIES.filter(c => !curOpts.includes(c)).map(c => `<option value="${c}" ${c === cur ? 'selected' : ''} title="${esc(curName(c))}">${c}</option>`).join('')}</select>
     </div></div>
     <label class="field"><span>品名</span><input class="input" id="eName" maxlength="100" value="${esc(e?.name || '')}" placeholder="例如：燒肉晚餐、唐吉訶德"></label>
     <label class="field"><span>總額（實付）</span><input class="input big num" id="eAmt" inputmode="decimal" autocomplete="off" value="${esc(amtStr(e?.amount))}" placeholder="0">
@@ -661,7 +661,7 @@ function editExpense(ctx, t, e) {
     };
     const all = () => { paintAmtHint(); paintPaid(); paintShare(); paintRcSum(); paintHow(); paintLock(); };
     // 幣別
-    const setCur = c => { cur = c; $$('[data-cur]', s).forEach(b => b.setAttribute('aria-pressed', String(b.dataset.cur === c))); $('#eCurOther', s).value = curOpts.includes(c) ? '' : c; all(); };
+    const setCur = c => { cur = c; $$('[data-cur]', s).forEach(b => b.setAttribute('aria-pressed', String(b.dataset.cur === c))); $('#eCurOther', s).value = curOpts.includes(c) ? '' : c; $('#eCurOther', s).classList.toggle('on', !curOpts.includes(c)); all(); };
     $$('[data-cur]', s).forEach(b => b.addEventListener('click', () => setCur(b.dataset.cur)));
     $('#eCurOther', s).addEventListener('change', ev => { if (ev.target.value) setCur(ev.target.value); else setCur(curOpts[0]); });
     $('#eAmt', s).addEventListener('input', () => { paintAmtHint(); paintShare(); paintRcSum(); $('#ePaidSum', s) && paintPaid(); paintHow(); });
