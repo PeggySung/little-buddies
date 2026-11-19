@@ -182,6 +182,47 @@ export function myPart(e, t, u) {
   return (p.share[u] || 0) - (p.byOwner[u] || 0) - (R?.parts[u] || 0);
 }
 
+/* ───────── 照收據逐筆填 ─────────
+   rcpt {ex 收據價格未稅, rate 稅率, low 減免稅率, items [{name, price, who {成員: 份數}, px {owner, client} 代購, low 用減免稅率, noDisc 不參加折扣}]}
+   1. 未稅時每行先加稅（照幣別的最小單位四捨五入）
+   2. 實付 − 品項合計 ＝ 折扣（負）或服務費、稅（正），照每行金額比例分給參加的品項
+   3. 每行的成本照份數分給選到的人；代購那行算負責人的
+   存檔時換算成 shares／proxy，結算只看這兩個；rcpt 只給編輯畫面還原用 */
+export function rcCalc(A, rc, cur) {
+  const U = unitOf(cur), err = [], warn = [];
+  const rows = (rc.items || []).map((x, i) => {
+    const p = evalAmt(x.price), base = p == null || isNaN(p) ? NaN : toC(p);
+    const r = rc.ex ? (x.low ? Number(rc.low) || 0 : Number(rc.rate) || 0) : 0;
+    const taxed = isNaN(base) ? 0 : Math.round(base * (100 + r) / 100 / U) * U;
+    return { ...x, i, base, taxed };
+  });
+  rows.forEach(x => {
+    if (x.price !== '' && x.price != null && isNaN(x.base)) err.push(`第 ${x.i + 1} 行的價格看不懂`);
+    else if (x.taxed > 0 && !x.px && !Object.values(x.who || {}).some(q => q > 0)) err.push(`第 ${x.i + 1} 行${x.name ? `「${x.name}」` : ''}還沒選是誰的`);
+    if (x.taxed > 0 && x.px && !x.px.owner) err.push(`第 ${x.i + 1} 行的代購要選負責人`);
+  });
+  const live = rows.filter(x => x.taxed > 0), S = live.reduce((n, x) => n + x.taxed, 0);
+  const D = isNaN(A) ? 0 : A - S;
+  const join = live.filter(x => !x.noDisc), pool = join.length ? join : live;
+  const keys = pool.map(x => x.i), w = Object.fromEntries(pool.map(x => [x.i, x.taxed]));
+  const mag = Math.abs(D), k = mag % U === 0 ? U : 1, al = mag ? lrAlloc(mag / k, keys, w) : {};
+  live.forEach(x => { x.cost = x.taxed + Math.sign(D) * (al[x.i] || 0) * k; if (x.cost < 0) err.push(`第 ${x.i + 1} 行折完變成負的，請檢查實付或「不參加折扣」`); });
+  if (live.length && !isNaN(A) && S && Math.abs(D) > S * 0.3) warn.push(D < 0 ? `品項合計比實付多 ${money(-D, cur)}，是不是多打了一行？` : `實付比品項合計多 ${money(D, cur)}，是不是漏了一行？`);
+  const shares = {}, byOwner = {}, proxy = [];
+  for (const x of live) {
+    if (x.px) { byOwner[x.px.owner] = (byOwner[x.px.owner] || 0) + x.cost; proxy.push({ owner: x.px.owner, client: x.px.client || '', name: x.name || '', amount: x.cost / 100 }); continue; }
+    const ws = Object.fromEntries(Object.entries(x.who || {}).filter(([, q]) => q > 0)), ks = Object.keys(ws);
+    const kk = x.cost % U === 0 ? U : 1, y = lrAlloc(x.cost / kk, ks, ws);
+    x.parts = {}; ks.forEach(u => { const v = y[u] * kk; x.parts[u] = v; shares[u] = (shares[u] || 0) + v; });
+  }
+  // 看起來是未稅收據：品項合計乘上 1.05～1.15 剛好接近實付
+  const looksEx = !rc.ex && live.length && D > 0 && S && A / S > 1.04 && A / S < 1.16;
+  return { rows, live, S, D, shares, byOwner, proxy, err, warn, looksEx };
+}
+const rcClean = rc => ({ ex: !!rc.ex, rate: Number(rc.rate) || 0, low: Number(rc.low) || 0,
+  items: rc.items.filter(x => evalAmt(x.price) > 0).map(x => ({ name: x.name || '', price: evalAmt(x.price), who: x.px ? {} : Object.fromEntries(Object.entries(x.who || {}).filter(([, q]) => q > 0)),
+    px: x.px ? { owner: x.px.owner, client: x.px.client || '' } : null, low: !!x.low, noDisc: !!x.noDisc })) });
+
 /* ───────── 即時資料（只有打開記帳頁時才訂閱）───────── */
 const cache = {};
 export function watchMoney(ctx, tripId, onChange) {
@@ -242,7 +283,7 @@ function listHTML(t, list, me, solo) {
   // 我的花費：每種幣別一行
   const curs = [...new Set(list.map(e => e.cur))].sort((a, b) => (a === t.currency ? -1 : b === t.currency ? 1 : a.localeCompare(b)));
   const sumCard = `<section class="card" style="gap:10px">
-    <div class="row" style="justify-content:space-between"><b>${solo ? '花費' : '我的花費'}</b><span class="tiny faint">${solo ? '' : '只算自己的份，不含代購'}</span></div>
+    <div class="row" style="justify-content:space-between"><b>${solo ? '花費' : '我的花費'}</b><span class="tiny faint">只算自己的份，不含代購${solo ? '' : '和別人的'}</span></div>
     ${curs.map(cur => {
       const xs = list.filter(e => e.cur === cur), mine = xs.reduce((s, e) => s + myPart(e, t, me), 0), tot = xs.reduce((s, e) => s + toC(e.amount), 0);
       return `<div class="mn-sum"><span class="cur-badge">${esc(cur)}</span><b class="num">${money(mine, cur)}</b>${solo ? '' : `<span class="tiny faint num">全團 ${money(tot, cur)}</span>`}</div>`;
@@ -269,7 +310,7 @@ function listHTML(t, list, me, solo) {
 function rowHTML(t, e, me, solo) {
   const p = exParts(e, t), payers = Object.keys(p.paid), split = Object.keys(p.share).filter(u => (p.share[u] || 0) - (p.byOwner[u] || 0) > 0);
   const mine = myPart(e, t, me), locked = isLocked(t.id, e.cur);
-  const tags = [(e.proxy || []).length ? '代購' : '', e.refund?.actual ? '退稅' : '', settledAmt(e, t) ? '已先結清' : ''].filter(Boolean);
+  const tags = [e.rcpt ? '逐筆' : '', (e.proxy || []).length ? '代購' : '', e.refund?.actual ? '退稅' : '', settledAmt(e, t) ? '已先結清' : ''].filter(Boolean);
   return `<button type="button" class="mn-row" data-ex="${esc(e.id)}" aria-label="${esc(e.name)} ${money(p.A, e.cur)}，編輯">
     ${catIcon(e.cat, 'sm')}
     <span class="mn-main"><span class="mn-name">${esc(e.name)}</span>
@@ -371,17 +412,22 @@ function editExpense(ctx, t, e) {
   const amtStr = v => v == null ? '' : String(v);
   // 付款人、分攤
   let payers = e ? (e.paid && Object.keys(e.paid).length ? Object.keys(e.paid) : [e.payer]).filter(Boolean) : [me];
+  if (solo) payers = [me];
   const paidIn = {}; if (e?.paid) for (const [u, v] of Object.entries(e.paid)) paidIn[u] = amtStr(v);
   let split = e ? (e.shares && Object.keys(e.shares).length ? Object.keys(e.shares) : [...(e.split || [])]) : [...ms];
-  let custom = !!(e?.shares && Object.keys(e.shares).length);
+  let custom = !!(e?.shares && Object.keys(e.shares).length) && !e?.rcpt;
   const shareIn = {}; if (custom) for (const [u, v] of Object.entries(e.shares)) shareIn[u] = amtStr(v);
-  let proxy = (e?.proxy || []).map(x => ({ ...x, amount: amtStr(x.amount) }));
+  // 照收據逐筆填：有 rcpt 的舊記帳直接打開
+  let rc = e?.rcpt ? { ex: !!e.rcpt.ex, rate: e.rcpt.rate ?? 10, low: e.rcpt.low ?? 8, items: e.rcpt.items.map(x => ({ ...x, price: amtStr(x.price), who: { ...(x.who || {}) }, px: x.px ? { ...x.px } : null })) } : null;
+  let proxy = rc ? [] : (e?.proxy || []).map(x => ({ ...x, amount: amtStr(x.amount) }));
   let refund = e?.refund ? { actual: amtStr(e.refund.actual), who: e.refund.who, settled: [...(e.refund.settled || [])] } : null;
   let settled = [...(e?.settled || [])];
-  let cat = e?.cat || 'food';
+  let cat = e?.cat || (isNew ? localGet('mncat:' + t.id) : '') || 'food';
   const moreOpen = !!(proxy.length || refund || settled.length || e?.note);
   const memBtn = (attr, u, on) => `<button type="button" class="mem" data-${attr}="${esc(u)}" aria-pressed="${on}">${av(t, u, 'sm')}<span>${esc(nm(t, u))}</span></button>`;
   const allPeople = orderOf(t, [...payers, ...split]);
+  // 這趟出現過的委託人（代購時可以直接選）
+  const clients = [...new Set((cache[t.id]?.list || []).flatMap(x => [...(x.proxy || []).map(p => p.client), ...(x.rcpt?.items || []).map(i => i.px?.client)]).filter(Boolean))];
 
   openSheet(`<div class="sheet-h"><h3 class="title">${isNew ? '記一筆' : '編輯記帳'}</h3><button class="iconbtn" data-close aria-label="關閉">✕</button></div>
     <div id="eLock"></div>
@@ -389,59 +435,78 @@ function editExpense(ctx, t, e) {
       ${curOpts.map(c => `<button type="button" data-cur="${esc(c)}" aria-pressed="${c === cur}">${esc(curName(c))}</button>`).join('')}
       <select class="input" id="eCurOther" aria-label="其他幣別"><option value="">其他…</option>${CURRENCIES.filter(c => !curOpts.includes(c)).map(c => `<option value="${c}" ${c === cur ? 'selected' : ''}>${c} ${esc(curName(c))}</option>`).join('')}</select>
     </div></div>
-    <label class="field"><span>品名</span><input class="input" id="eName" maxlength="100" value="${esc(e?.name || '')}" placeholder="例如：燒肉晚餐、計程車"></label>
-    <label class="field"><span>總額</span><input class="input big num" id="eAmt" inputmode="decimal" autocomplete="off" value="${esc(amtStr(e?.amount))}" placeholder="0">
+    <label class="field"><span>品名</span><input class="input" id="eName" maxlength="100" value="${esc(e?.name || '')}" placeholder="例如：燒肉晚餐、唐吉訶德"></label>
+    <label class="field"><span>總額（實付）</span><input class="input big num" id="eAmt" inputmode="decimal" autocomplete="off" value="${esc(amtStr(e?.amount))}" placeholder="0">
       <span class="tiny faint" id="eAmtHint">可以直接打算式，例如 1200+850</span></label>
     <div class="field"><span id="lblCat">分類</span><div class="cat-pick" role="group" aria-labelledby="lblCat">
       ${Object.entries(CATS).map(([k, v]) => `<button type="button" class="cat" data-cat="${k}" aria-pressed="${cat === k}">${catIcon(k, 'xs')}<span>${v.label}</span></button>`).join('')}</div></div>
     <label class="field"><span>付款日期</span><input class="input" type="date" id="eDate" value="${esc(e?.date || todayIn(t.tz))}"></label>
     ${solo ? '' : `<div class="field"><span>誰先付錢 <span class="tiny faint">（可以選多位）</span></span><div class="mem-pick" id="ePayers">${allPeople.filter(u => ms.includes(u) || payers.includes(u)).map(u => memBtn('payer', u, payers.includes(u))).join('')}</div><div id="ePaidBox"></div></div>
-    <div class="field"><span>分給誰</span><div class="mem-pick" id="eSplit">${allPeople.filter(u => ms.includes(u) || split.includes(u)).map(u => memBtn('split', u, split.includes(u))).join('')}</div>
+    <div class="field" id="eSplitWrap"><span>分給誰</span><div class="mem-pick" id="eSplit">${allPeople.filter(u => ms.includes(u) || split.includes(u)).map(u => memBtn('split', u, split.includes(u))).join('')}</div>
       <div id="eShareBox"></div></div>`}
+    <div id="eRcWrap"></div>
+    <button type="button" class="itgo" id="eRcToggle"></button>
     <details class="more" ${moreOpen ? 'open' : ''}><summary>代購、退稅${solo ? '' : '、這筆怎麼還'}、備註</summary>
       <div class="more-body">
-        ${solo ? '' : `<div class="field"><span>代購 <span class="tiny faint">（幫不在這趟的朋友買）</span></span><div id="ePx"></div>
-          <button type="button" class="btn" id="ePxAdd">${ic.plus}加一件代購</button></div>`}
+        <div class="field" id="ePxWrap"><span>代購 <span class="tiny faint">（幫不在這趟的朋友買）</span></span><div id="ePx"></div>
+          <button type="button" class="btn" id="ePxAdd">${ic.plus}加一件代購</button></div>
         <div class="field"><label class="row" style="gap:8px"><input type="checkbox" id="eRf" ${refund ? 'checked' : ''}> <span>這筆有退稅（實際退回的金額）</span></label><div id="eRfBox"></div></div>
         ${solo ? '' : '<div class="field" id="eHowWrap"><span>這筆怎麼還</span><div id="eHow"></div></div>'}
         <label class="field"><span>備註（選填）</span><textarea class="input" id="eNote" rows="2" maxlength="500">${esc(e?.note || '')}</textarea></label>
       </div></details>
+    <datalist id="eClients">${clients.map(c => `<option value="${esc(c)}">`).join('')}</datalist>
     <p class="small" id="eErr" style="margin:0;color:var(--danger)"></p>
     <div class="sheet-acts">${isNew || locked0 ? '' : '<button class="btn danger" id="eDel">刪除</button>'}<button class="btn pri" id="eSave">儲存</button></div>`, s => {
     const A = () => { const v = evalAmt($('#eAmt', s).value); return v == null || isNaN(v) ? NaN : toC(v); };
     const lockedNow = () => locked0 || isLocked(t.id, cur);
     const U = () => unitOf(cur);
+    const pxTotal = () => rc ? 0 : proxy.reduce((n, x) => n + toC(evalAmt(x.amount) || 0), 0);
+    const rcNow = () => rc ? rcCalc(A(), rc, cur) : null;
     // 依目前畫面組出一筆暫時的記帳（拿來算平均、怎麼還）
     const draft = () => {
-      const d = { cur, amount: (A() || 0) / 100, split: [...split], proxy: proxy.filter(x => x.owner && evalAmt(x.amount) > 0).map(x => ({ owner: x.owner, client: x.client || '', name: x.name || '', amount: evalAmt(x.amount) })) };
+      const d = { cur, amount: (A() || 0) / 100, split: [...split] };
       if (payers.length > 1) d.paid = Object.fromEntries(payers.map(u => [u, evalAmt(paidIn[u]) || 0])); else d.payer = payers[0];
-      if (custom) d.shares = Object.fromEntries(split.map(u => [u, evalAmt(shareIn[u]) || 0]));
+      const R = rcNow();
+      if (R) {
+        d.shares = Object.fromEntries(Object.entries(R.shares).map(([u, v]) => [u, v / 100]));
+        d.split = orderOf(t, Object.keys(R.shares)).filter(u => R.shares[u] > 0);
+        d.proxy = R.proxy;
+      } else {
+        if (custom) d.shares = Object.fromEntries(split.map(u => [u, evalAmt(shareIn[u]) || 0]));
+        d.proxy = proxy.filter(x => (x.owner || solo) && evalAmt(x.amount) > 0).map(x => ({ owner: solo ? me : x.owner, client: x.client || '', name: x.name || '', amount: evalAmt(x.amount) }));
+      }
       if (refund && evalAmt(refund.actual) > 0 && refund.who) d.refund = { actual: evalAmt(refund.actual), who: refund.who, settled: refund.settled };
       d.settled = settled; return d;
     };
     const paintLock = () => {
       const L = lockedNow();
-      $('#eLock', s).innerHTML = L ? `<div class="lock-note">${ic.lock || ''}<span>${esc(curName(cur))}帳目鎖定中（已經有人轉帳）：${isNew ? '不能新增這個幣別的記帳。' : '只能改品名、分類、日期和備註。'}</span></div>` : '';
-      $$('#eAmt, [data-cur], #eCurOther, [data-payer], [data-split], #ePxAdd, #eRf, #eShareBox input, #ePaidBox input, #ePx input, #ePx select, #eRfBox input, #eRfBox select, [data-set], #eCustom', s).forEach(x => { x.disabled = L; });
+      $('#eLock', s).innerHTML = L ? `<div class="lock-note">${ic.lock}<span>${esc(curName(cur))}帳目鎖定中（已經有人轉帳）：${isNew ? '不能新增這個幣別的記帳。' : '只能改品名、分類、日期和備註。'}</span></div>` : '';
+      $$('#eAmt, [data-cur], #eCurOther, [data-payer], [data-split], #ePxAdd, #eRf, #eShareBox input, #eShareBox button, #ePaidBox input, #ePx input, #ePx select, #ePx button, #eRfBox input, #eRfBox select, [data-set], #eRcWrap input, #eRcWrap button, #eRcWrap select, #eRcToggle', s).forEach(x => { x.disabled = L; });
     };
     const paintAmtHint = () => {
       const raw = $('#eAmt', s).value, v = evalAmt(raw);
       $('#eAmtHint', s).textContent = v == null ? '可以直接打算式，例如 1200+850' : isNaN(v) ? '看不懂這個金額' : /[+\-*/×÷＋－]/.test(raw.replace(/^-/, '')) ? `＝ ${money(toC(v), cur)}` : money(toC(v), cur);
       $('#eAmtHint', s).style.color = v != null && isNaN(v) ? 'var(--danger)' : '';
     };
+    // 輸入框重畫後把游標放回原位
+    const keepFocus = (box, sel, fn) => { const a = document.activeElement, key = a && box.contains(a) ? sel(a) : null, pos = a?.selectionStart; fn(); if (key) { const n = $(key, box); if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch {} } } };
     const paintPaid = () => {
       const box = $('#ePaidBox', s); if (!box) return;
       if (payers.length < 2) { box.innerHTML = ''; return; }
       const tot = payers.reduce((n, u) => n + toC(evalAmt(paidIn[u]) || 0), 0), a = A();
       box.innerHTML = `<div class="amt-grid">${payers.map(u => `<label class="amt-row">${av(t, u, 'xs')}<span class="small">${esc(nm(t, u))} 付了</span>
         <input class="input num" data-pin="${esc(u)}" inputmode="decimal" value="${esc(paidIn[u] || '')}" placeholder="0"></label>`).join('')}</div>
-        <span class="tiny" style="color:${isNaN(a) || tot === a ? 'var(--ink3)' : 'var(--danger)'}">合計 ${money(tot, cur)}${!isNaN(a) && tot !== a ? `，和總額差 ${money(a - tot, cur)}` : ''}</span>`;
-      $$('[data-pin]', box).forEach(i => i.addEventListener('input', () => { paidIn[i.dataset.pin] = i.value; const p = i.selectionStart; paintPaid(); const n = $(`[data-pin="${CSS.escape(i.dataset.pin)}"]`, box); n.focus(); n.setSelectionRange(p, p); paintHow(); }));
-      paintLock();
+        <span class="tiny" id="ePaidSum"></span>`;
+      const sumLine = () => { const tot2 = payers.reduce((n, u) => n + toC(evalAmt(paidIn[u]) || 0), 0), a2 = A(), el = $('#ePaidSum', box);
+        el.textContent = `合計 ${money(tot2, cur)}${!isNaN(a2) && tot2 !== a2 ? `，和總額差 ${money(a2 - tot2, cur)}` : ''}`; el.style.color = isNaN(a2) || tot2 === a2 ? 'var(--ink3)' : 'var(--danger)'; };
+      sumLine();
+      $$('[data-pin]', box).forEach(i => i.addEventListener('input', () => { paidIn[i.dataset.pin] = i.value; sumLine(); paintHow(); }));
+      void tot; void a;
     };
-    const pxTotal = () => proxy.reduce((n, x) => n + toC(evalAmt(x.amount) || 0), 0);
     const paintShare = () => {
       const box = $('#eShareBox', s); if (!box) return;
+      $('#eSplitWrap', s).classList.toggle('hidden', !!rc);
+      if (rc) { box.innerHTML = ''; return; }
       const a = A(), own = isNaN(a) ? NaN : a - pxTotal();
       if (!split.length) { box.innerHTML = '<span class="tiny" style="color:var(--danger)">至少選一個人</span>'; return; }
       if (!custom) {
@@ -454,52 +519,131 @@ function editExpense(ctx, t, e) {
           split.forEach(u => shareIn[u] = ev2[u] != null ? String(ev2[u] / 100) : ''); paintShare(); paintHow();
         });
       } else {
-        const tot = split.reduce((n, u) => n + toC(evalAmt(shareIn[u]) || 0), 0);
         box.innerHTML = `<div class="amt-grid">${orderOf(t, split).filter(u => split.includes(u)).map(u => `<label class="amt-row">${av(t, u, 'xs')}<span class="small">${esc(nm(t, u))}</span>
           <input class="input num" data-sin="${esc(u)}" inputmode="decimal" value="${esc(shareIn[u] || '')}" placeholder="0"></label>`).join('')}</div>
-          <div class="row" style="justify-content:space-between;gap:8px"><span class="tiny" style="color:${isNaN(own) || tot === own ? 'var(--ink3)' : 'var(--danger)'}">合計 ${money(tot, cur)}${!isNaN(own) && tot !== own ? `，${pxTotal() ? '扣掉代購後' : '和總額'}差 ${money(own - tot, cur)}` : ''}</span>
-          <button type="button" class="linkbtn" id="eEven">改回平均</button></div>`;
-        $$('[data-sin]', box).forEach(i => i.addEventListener('input', () => { shareIn[i.dataset.sin] = i.value; const p = i.selectionStart; paintShare(); const n = $(`[data-sin="${CSS.escape(i.dataset.sin)}"]`, box); n.focus(); n.setSelectionRange(p, p); paintHow(); }));
+          <div class="row" style="justify-content:space-between;gap:8px"><span class="tiny" id="eShareSum"></span><button type="button" class="linkbtn" id="eEven">改回平均</button></div>`;
+        const sumLine = () => { const a2 = A(), own2 = isNaN(a2) ? NaN : a2 - pxTotal(), tot = split.reduce((n, u) => n + toC(evalAmt(shareIn[u]) || 0), 0), el = $('#eShareSum', box);
+          el.textContent = `合計 ${money(tot, cur)}${!isNaN(own2) && tot !== own2 ? `，${pxTotal() ? '扣掉代購後' : '和總額'}差 ${money(own2 - tot, cur)}` : ''}`; el.style.color = isNaN(own2) || tot === own2 ? 'var(--ink3)' : 'var(--danger)'; };
+        sumLine();
+        $$('[data-sin]', box).forEach(i => i.addEventListener('input', () => { shareIn[i.dataset.sin] = i.value; sumLine(); paintHow(); }));
         $('#eEven', box).addEventListener('click', () => { custom = false; paintShare(); paintHow(); });
       }
-      paintLock();
     };
     const paintPx = () => {
-      const box = $('#ePx', s); if (!box) return;
+      const box = $('#ePx', s);
+      $('#ePxWrap', s).classList.toggle('hidden', !!rc);
+      if (rc) return;
       box.innerHTML = proxy.map((x, i) => `<div class="px-line">
-        <div class="grid2"><label class="field"><span class="tiny">負責人</span><select class="input" data-px="${i}" data-k="owner">${ms.map(u => `<option value="${esc(u)}" ${x.owner === u ? 'selected' : ''}>${esc(nm(t, u))}</option>`).join('')}</select></label>
-          <label class="field"><span class="tiny">委託人</span><input class="input" data-px="${i}" data-k="client" maxlength="30" value="${esc(x.client || '')}" placeholder="例如：小美"></label></div>
+        <div class="grid2">${solo ? '' : `<label class="field"><span class="tiny">負責人</span><select class="input" data-px="${i}" data-k="owner">${ms.map(u => `<option value="${esc(u)}" ${x.owner === u ? 'selected' : ''}>${esc(nm(t, u))}</option>`).join('')}</select></label>`}
+          <label class="field"><span class="tiny">委託人</span><input class="input" data-px="${i}" data-k="client" maxlength="30" list="eClients" value="${esc(x.client || '')}" placeholder="例如：小美"></label>
+          ${solo ? `<label class="field"><span class="tiny">金額</span><input class="input num" data-px="${i}" data-k="amount" inputmode="decimal" value="${esc(x.amount || '')}" placeholder="0"></label>` : ''}</div>
         <div class="grid2"><label class="field"><span class="tiny">品名（選填）</span><input class="input" data-px="${i}" data-k="name" maxlength="60" value="${esc(x.name || '')}"></label>
-          <label class="field"><span class="tiny">金額</span><input class="input num" data-px="${i}" data-k="amount" inputmode="decimal" value="${esc(x.amount || '')}" placeholder="0"></label></div>
+          ${solo ? '' : `<label class="field"><span class="tiny">金額</span><input class="input num" data-px="${i}" data-k="amount" inputmode="decimal" value="${esc(x.amount || '')}" placeholder="0"></label>`}</div>
         <button type="button" class="linkbtn" data-pxdel="${i}" style="align-self:flex-end">移除這件</button></div>`).join('')
-        + (proxy.length ? `<span class="tiny faint">代購合計 ${money(pxTotal(), cur)}，算在負責人身上，剩下的才分給大家。</span>` : '');
+        + (proxy.length ? `<span class="tiny faint" id="ePxSum"></span>` : '');
+      const sumLine = () => { const el = $('#ePxSum', box); if (el) el.textContent = `代購合計 ${money(pxTotal(), cur)}，${solo ? '不算在自己的花費裡。' : '算在負責人身上，剩下的才分給大家。'}`; };
+      sumLine();
       $$('[data-px]', box).forEach(i => i.addEventListener(i.tagName === 'SELECT' ? 'change' : 'input', () => {
         proxy[+i.dataset.px][i.dataset.k] = i.value;
-        if (i.dataset.k === 'amount') { paintShare(); paintHow(); const p = i.selectionStart; paintPx(); const n = $(`[data-px="${i.dataset.px}"][data-k="amount"]`, box); n.focus(); n.setSelectionRange(p, p); }
+        if (i.dataset.k === 'amount') { sumLine(); paintShare(); paintHow(); }
       }));
-      $$('[data-pxdel]', box).forEach(b => b.addEventListener('click', () => { proxy.splice(+b.dataset.pxdel, 1); paintPx(); paintShare(); paintHow(); }));
-      paintLock();
+      $$('[data-pxdel]', box).forEach(b => b.addEventListener('click', () => { proxy.splice(+b.dataset.pxdel, 1); paintPx(); paintShare(); paintHow(); paintLock(); }));
+    };
+    /* ── 照收據逐筆填 ── */
+    const newLine = () => { const prev = rc.items[rc.items.length - 1]; return { name: '', price: '', who: prev && !prev.px ? { ...prev.who } : solo ? { [me]: 1 } : {}, px: prev?.px ? { ...prev.px } : null, low: false, noDisc: false }; };
+    const paintRc = () => {
+      const box = $('#eRcWrap', s), tg = $('#eRcToggle', s);
+      tg.innerHTML = rc ? '改回不分品項' : `🧾 照收據逐筆填<span class="tiny">一張收據很多人買、有代購時用：每行點一下是誰的，折扣和稅自動照比例分</span>`;
+      tg.classList.toggle('on', !!rc);
+      if (!rc) { box.innerHTML = ''; return; }
+      const people = ms;
+      box.innerHTML = `<section class="rc">
+        <div class="row" style="justify-content:space-between;gap:8px;flex-wrap:wrap"><b>🧾 收據品項</b>
+          <label class="row tiny" style="gap:6px"><input type="checkbox" id="rcEx" ${rc.ex ? 'checked' : ''}> 收據價格是未稅</label></div>
+        ${rc.ex ? `<div class="row tiny" style="gap:8px;flex-wrap:wrap">稅率 <input class="input num rc-rate" id="rcRate" inputmode="decimal" value="${esc(String(rc.rate))}" aria-label="稅率">%　減免稅率 <input class="input num rc-rate" id="rcLow" inputmode="decimal" value="${esc(String(rc.low))}" aria-label="減免稅率">%<span class="faint">（例如日本食品 8%）</span></div>` : ''}
+        <div class="rc-lines">${rc.items.map((x, i) => {
+          const multi = !x.px && Object.keys(x.who || {}).filter(u => x.who[u] > 0).length > 1;
+          return `<div class="rc-line" data-li="${i}">
+            <div class="rc-top"><span class="rc-no">${i + 1}</span>
+              <input class="input num rc-price" data-ri="${i}" data-k="price" inputmode="decimal" value="${esc(x.price)}" placeholder="價格" aria-label="第 ${i + 1} 行價格">
+              <input class="input rc-name" data-ri="${i}" data-k="name" maxlength="60" value="${esc(x.name || '')}" placeholder="品名（選填）" aria-label="第 ${i + 1} 行品名">
+              <button type="button" class="iconbtn" data-rmore="${i}" aria-label="第 ${i + 1} 行更多設定" aria-expanded="${!!x.open}">⋯</button></div>
+            <div class="rc-who">${people.map(u => `<button type="button" class="rc-chip" data-rw="${i}:${esc(u)}" aria-pressed="${!x.px && x.who?.[u] > 0}" style="--c:${esc(t.members[u].color || '#999')}">${av(t, u, 'xs')}${esc(nm(t, u))}</button>`).join('')}
+              <button type="button" class="rc-chip" data-rpx="${i}" aria-pressed="${!!x.px}">🛍️ 代購</button></div>
+            ${multi ? `<div class="rc-qty"><span class="tiny faint">幾份</span>${Object.keys(x.who).filter(u => x.who[u] > 0).map(u => `<label class="tiny row" style="gap:4px">${esc(nm(t, u))}<input class="input num" data-rq="${i}:${esc(u)}" inputmode="numeric" value="${x.who[u]}" aria-label="${esc(nm(t, u))} 幾份"></label>`).join('')}</div>` : ''}
+            ${x.px ? `<div class="grid2">${solo ? '' : `<select class="input" data-ri="${i}" data-k="owner" aria-label="代購負責人">${people.map(u => `<option value="${esc(u)}" ${x.px.owner === u ? 'selected' : ''}>${esc(nm(t, u))} 負責</option>`).join('')}</select>`}
+              <input class="input" data-ri="${i}" data-k="client" list="eClients" maxlength="30" value="${esc(x.px.client || '')}" placeholder="委託人（例如：小美）" aria-label="委託人"></div>` : ''}
+            ${x.open ? `<div class="rc-opts">${rc.ex ? `<label class="row tiny" style="gap:6px"><input type="checkbox" data-rflag="${i}:low" ${x.low ? 'checked' : ''}> 用減免稅率（${esc(String(rc.low))}%）</label>` : ''}
+              <label class="row tiny" style="gap:6px"><input type="checkbox" data-rflag="${i}:noDisc" ${x.noDisc ? 'checked' : ''}> 不參加折扣（優惠券沒折到這件）</label>
+              <button type="button" class="linkbtn" data-rdel="${i}" style="align-self:flex-start;color:var(--danger)">刪除這行</button></div>` : ''}
+            <span class="tiny faint rc-cost" data-rcost="${i}"></span></div>`;
+        }).join('')}</div>
+        <button type="button" class="btn" id="rcAdd">${ic.plus}加一行</button>
+        <div id="rcSum"></div></section>`;
+      const upd = (i, k, v) => { const x = rc.items[i]; if (k === 'owner' || k === 'client') x.px[k] = v; else x[k] = v; };
+      $$('[data-ri]', box).forEach(el => el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', () => { upd(+el.dataset.ri, el.dataset.k, el.value); paintRcSum(); }));
+      $$('[data-rw]', box).forEach(b => b.addEventListener('click', () => {
+        const [i, u] = b.dataset.rw.split(':'), x = rc.items[+i];
+        if (x.px) { x.px = null; x.who = {}; }
+        x.who = { ...(x.who || {}) }; if (x.who[u] > 0) delete x.who[u]; else x.who[u] = 1;
+        keepFocus(box, () => null, paintRc); $(`[data-rw="${CSS.escape(b.dataset.rw)}"]`, box)?.focus();
+      }));
+      $$('[data-rpx]', box).forEach(b => b.addEventListener('click', () => {
+        const x = rc.items[+b.dataset.rpx];
+        x.px = x.px ? null : { owner: payers[0] || me, client: clients[0] || '' }; if (x.px) x.who = {};
+        paintRc(); $(`[data-rpx="${b.dataset.rpx}"]`, box)?.focus();
+      }));
+      $$('[data-rq]', box).forEach(el => el.addEventListener('input', () => { const [i, u] = el.dataset.rq.split(':'); const q = Math.max(0, Math.round(Number(el.value) || 0)); rc.items[+i].who[u] = q || 1; paintRcSum(); }));
+      $$('[data-rmore]', box).forEach(b => b.addEventListener('click', () => { const x = rc.items[+b.dataset.rmore]; x.open = !x.open; paintRc(); $(`[data-rmore="${b.dataset.rmore}"]`, box)?.focus(); }));
+      $$('[data-rflag]', box).forEach(c => c.addEventListener('change', () => { const [i, k] = c.dataset.rflag.split(':'); rc.items[+i][k] = c.checked; paintRcSum(); }));
+      $$('[data-rdel]', box).forEach(b => b.addEventListener('click', () => { rc.items.splice(+b.dataset.rdel, 1); if (!rc.items.length) rc.items.push(newLine()); paintRc(); }));
+      $('#rcAdd', box).addEventListener('click', () => { rc.items.push(newLine()); paintRc(); const n = $$('.rc-price', box).pop(); n?.focus(); });
+      $('#rcEx', box).addEventListener('change', ev => { rc.ex = ev.target.checked; paintRc(); });
+      $('#rcRate', box)?.addEventListener('input', ev => { rc.rate = ev.target.value; paintRcSum(); });
+      $('#rcLow', box)?.addEventListener('input', ev => { rc.low = ev.target.value; paintRcSum(); });
+      paintRcSum(); paintLock();
+    };
+    const paintRcSum = () => {
+      const box = $('#rcSum', s); if (!box || !rc) return;
+      const R = rcNow(), a = A();
+      for (const x of R.rows) {
+        const el = $(`[data-rcost="${x.i}"]`, s); if (!el) continue;
+        const l = R.live.find(y => y.i === x.i);
+        el.textContent = !l ? '' : l.px ? `→ ${money(l.cost, cur)}（${nm(t, l.px.owner)} 的代購${l.px.client ? `・${l.px.client}` : ''}）`
+          : l.parts && Object.keys(l.parts).length ? `→ ${money(l.cost, cur)}${Object.keys(l.parts).length > 1 ? `：${Object.entries(l.parts).map(([u, v]) => `${nm(t, u)} ${money(v, cur)}`).join('、')}` : ''}` : '';
+      }
+      const people = orderOf(t, [...Object.keys(R.shares), ...Object.keys(R.byOwner)]).filter(u => R.shares[u] || R.byOwner[u]);
+      box.innerHTML = `<div class="rc-sum">
+        <div class="row tiny muted" style="justify-content:space-between"><span>品項合計${rc.ex ? '（含稅）' : ''}</span><span class="num">${money(R.S, cur)}</span></div>
+        ${!isNaN(a) && R.D ? `<div class="row tiny muted" style="justify-content:space-between"><span>${R.D < 0 ? '折扣' : '服務費、稅等'}（照比例分給每行）</span><span class="num">${money(R.D, cur, true)}</span></div>` : ''}
+        <div class="row tiny" style="justify-content:space-between"><b>實付</b><b class="num">${isNaN(a) ? '—' : money(a, cur)}</b></div>
+        ${people.map(u => `<div class="row small" style="justify-content:space-between;gap:8px"><span class="row" style="gap:6px">${av(t, u, 'xs')}${esc(nm(t, u))}</span>
+          <span class="num">${R.shares[u] ? money(R.shares[u], cur) : ''}${R.byOwner[u] ? `<span class="tiny faint">${R.shares[u] ? '＋' : ''}代購 ${money(R.byOwner[u], cur)}</span>` : ''}</span></div>`).join('')}
+        ${R.looksEx ? `<div class="lock-note"><span>品項合計乘上 ${Math.round(a / R.S * 100) - 100}% 左右剛好是實付，收據可能是<b>未稅價</b>。<button type="button" class="linkbtn" id="rcToEx">改成未稅</button></span></div>` : ''}
+        ${[...R.err, ...R.warn].map(m => `<p class="tiny" style="margin:0;color:var(--danger)">⚠ ${esc(m)}</p>`).join('')}
+      </div>`;
+      $('#rcToEx', box)?.addEventListener('click', () => { rc.ex = true; paintRc(); });
+      paintHow();
     };
     const paintRf = () => {
       const box = $('#eRfBox', s);
       if (!refund) { box.innerHTML = ''; return; }
       box.innerHTML = `<div class="grid2"><label class="field"><span class="tiny">實際退回</span><input class="input num" id="eRfAmt" inputmode="decimal" value="${esc(refund.actual || '')}" placeholder="0"></label>
         ${solo ? '' : `<label class="field"><span class="tiny">誰領到</span><select class="input" id="eRfWho">${ms.map(u => `<option value="${esc(u)}" ${refund.who === u ? 'selected' : ''}>${esc(nm(t, u))}</option>`).join('')}</select></label>`}</div>
-        <span class="tiny faint">${solo ? '會從這筆的花費扣掉。' : '照每個人在這筆分攤的比例退給大家，錢在領到的人手上。'}</span>`;
+        <span class="tiny faint">${solo ? '會從這筆的花費扣掉。' : '照每個人在這筆的金額比例退給大家（代購那份退給負責人），錢在領到的人手上。'}</span>`;
       $('#eRfAmt', box).addEventListener('input', ev => { refund.actual = ev.target.value; paintHow(); });
       $('#eRfWho', box)?.addEventListener('change', ev => { refund.who = ev.target.value; paintHow(); });
-      paintLock();
     };
     const paintHow = () => {
       const box = $('#eHow', s); if (!box) return;
-      const a = A(); const d = draft();
-      if (isNaN(a) || !a || !split.length || !payers.length) { box.innerHTML = '<span class="tiny faint">填好總額、付款人和分攤後，這裡會列出這筆誰要還誰。</span>'; return; }
-      const fake = { ...d, id: '_' };
+      const a = A(), d = draft();
+      if (isNaN(a) || !a || !payers.length || (!rc && !split.length)) { box.innerHTML = '<span class="tiny faint">填好總額、付款人和分攤後，這裡會列出這筆誰要還誰。</span>'; return; }
+      const fake = { ...d };
       const trs = exTransfers(fake, t), R = exRefund(fake, t);
       settled = settled.filter(u => trs.some(x => x.from === u));
       if (refund) refund.settled = (refund.settled || []).filter(u => R && R.parts[u] > 0 && u !== R.who);
       const lines = [...trs.map(x => ({ k: 'net', u: x.from, to: x.to, amt: x.amt, done: settled.includes(x.from) })),
-        ...(R ? Object.entries(R.parts).filter(([u]) => u !== R.who).map(([u, v]) => ({ k: 'rf', u, to: u, from: R.who, amt: v, done: refund.settled.includes(u) })) : [])];
+        ...(R ? Object.entries(R.parts).filter(([u]) => u !== R.who).map(([u, v]) => ({ k: 'rf', u, from: R.who, amt: v, done: refund.settled.includes(u) })) : [])];
       box.innerHTML = lines.length ? `<div class="tr-list">${lines.map(l => `<div class="tr ${l.done ? 'paid' : ''}">
           <span class="tr-flow">${l.k === 'rf' ? `${av(t, l.from)}<span class="tiny">${esc(nm(t, l.from))}</span>→${av(t, l.u)}<span class="tiny">${esc(nm(t, l.u))}</span><span class="tag">退稅</span>`
             : `${av(t, l.u)}<span class="tiny">${esc(nm(t, l.u))}</span>→${av(t, l.to)}<span class="tiny">${esc(nm(t, l.to))}</span>`}</span>
@@ -515,12 +659,12 @@ function editExpense(ctx, t, e) {
       }));
       paintLock();
     };
-    const all = () => { paintAmtHint(); paintPaid(); paintShare(); paintHow(); paintLock(); };
+    const all = () => { paintAmtHint(); paintPaid(); paintShare(); paintRcSum(); paintHow(); paintLock(); };
     // 幣別
     const setCur = c => { cur = c; $$('[data-cur]', s).forEach(b => b.setAttribute('aria-pressed', String(b.dataset.cur === c))); $('#eCurOther', s).value = curOpts.includes(c) ? '' : c; all(); };
     $$('[data-cur]', s).forEach(b => b.addEventListener('click', () => setCur(b.dataset.cur)));
     $('#eCurOther', s).addEventListener('change', ev => { if (ev.target.value) setCur(ev.target.value); else setCur(curOpts[0]); });
-    $('#eAmt', s).addEventListener('input', all);
+    $('#eAmt', s).addEventListener('input', () => { paintAmtHint(); paintShare(); paintRcSum(); $('#ePaidSum', s) && paintPaid(); paintHow(); });
     $$('[data-cat]', s).forEach(b => b.addEventListener('click', () => { cat = b.dataset.cat; $$('[data-cat]', s).forEach(y => y.setAttribute('aria-pressed', String(y === b))); }));
     $$('[data-payer]', s).forEach(b => b.addEventListener('click', () => {
       const u = b.dataset.payer;
@@ -536,9 +680,22 @@ function editExpense(ctx, t, e) {
       $$('[data-split]', s).forEach(y => y.setAttribute('aria-pressed', String(split.includes(y.dataset.split))));
       paintShare(); paintHow();
     }));
-    $('#ePxAdd', s)?.addEventListener('click', () => { proxy.push({ owner: payers[0] || me, client: '', name: '', amount: '' }); paintPx(); $$('[data-k="client"]', s).pop()?.focus(); });
-    $('#eRf', s).addEventListener('change', ev => { refund = ev.target.checked ? { actual: '', who: payers[0] || me, settled: [] } : null; paintRf(); paintHow(); });
-    paintPx(); paintRf(); all();
+    $('#ePxAdd', s).addEventListener('click', () => { proxy.push({ owner: payers[0] || me, client: clients[0] || '', name: '', amount: '' }); paintPx(); paintLock(); $$('[data-k="client"]', $('#ePx', s)).pop()?.focus(); });
+    $('#eRf', s).addEventListener('change', ev => { refund = ev.target.checked ? { actual: '', who: payers[0] || me, settled: [] } : null; paintRf(); paintHow(); paintLock(); });
+    $('#eRcToggle', s).addEventListener('click', () => {
+      if (rc) {
+        if (rc.items.some(x => x.price) && !confirm('改回不分品項？逐筆填的內容會清掉。')) return;
+        rc = null;
+      } else {
+        // 一般代購移進收據，當作各自一行
+        rc = { ex: false, rate: cur === 'JPY' ? 10 : 10, low: cur === 'JPY' ? 8 : 5, items: proxy.filter(x => evalAmt(x.amount) > 0).map(x => ({ name: x.name || '', price: x.amount, who: {}, px: { owner: solo ? me : x.owner, client: x.client || '' }, low: false, noDisc: false })) };
+        proxy = []; custom = false;
+        rc.items.push({ name: '', price: '', who: solo ? { [me]: 1 } : {}, px: null, low: false, noDisc: false });
+      }
+      paintRc(); paintPx(); paintShare(); paintHow(); paintLock();
+      if (rc) $('.rc-price', s)?.focus();
+    });
+    paintPx(); paintRf(); paintRc(); all();
     if (isNew) setTimeout(() => $('#eName', s).focus(), 50);
 
     $('#eSave', s).addEventListener('click', () => {
@@ -556,23 +713,29 @@ function editExpense(ctx, t, e) {
       const a = A(); if (isNaN(a) || a <= 0) return err('請填總額');
       if (a > 1e13) return err('金額太大了');
       const d = draft();
-      if (!solo) {
-        if (!split.length) return err('「分給誰」至少選一個人');
-        if (payers.length > 1) { const tot = payers.reduce((n, u) => n + toC(evalAmt(paidIn[u]) || 0), 0); if (tot !== a) return err(`每人付的合計 ${money(tot, cur)}，和總額 ${money(a, cur)} 不一樣`); }
-        if (proxy.some(x => evalAmt(x.amount) > 0 && !x.owner)) return err('代購要選負責人');
+      if (payers.length > 1) { const tot = payers.reduce((n, u) => n + toC(evalAmt(paidIn[u]) || 0), 0); if (tot !== a) return err(`每人付的合計 ${money(tot, cur)}，和總額 ${money(a, cur)} 不一樣`); }
+      if (rc) {
+        const R = rcNow();
+        if (!R.live.length) return err('收據至少要有一行有價格');
+        if (R.err.length) return err(R.err[0]);
+        d.rcpt = rcClean(rc);
+      } else {
+        if (!solo && !split.length) return err('「分給誰」至少選一個人');
         if (pxTotal() > a) return err('代購金額比總額還多');
         if (custom) { const tot = split.reduce((n, u) => n + toC(evalAmt(shareIn[u]) || 0), 0); if (tot !== a - pxTotal()) return err(`每人分攤的合計 ${money(tot, cur)}，應該是 ${money(a - pxTotal(), cur)}`); }
-      } else { d.payer = me; d.split = [me]; delete d.paid; delete d.shares; d.proxy = []; d.settled = []; if (d.refund) d.refund.who = me; }
+      }
+      if (solo) { d.payer = me; delete d.paid; if (!rc) { d.split = [me]; delete d.shares; } d.settled = []; if (d.refund) d.refund.who = me; }
       if (refund && !(evalAmt(refund.actual) > 0)) return err('請填實際退回的金額，或取消勾選退稅');
       if (d.refund && toC(d.refund.actual) > a) return err('退稅金額比總額還多');
       const data = { cur, amount: a / 100, name, cat, date, note, split: d.split, settled: d.settled || [], ...stamp };
       if (d.paid) data.paid = d.paid; else data.payer = d.payer;
-      if (d.shares) data.shares = d.shares;
+      if (d.shares && Object.keys(d.shares).length) data.shares = d.shares;
       if (d.proxy.length) data.proxy = d.proxy;
       if (d.refund) data.refund = d.refund;
-      localSet('mncur:' + t.id, cur);
+      if (d.rcpt) data.rcpt = d.rcpt;
+      localSet('mncur:' + t.id, cur); localSet('mncat:' + t.id, cat);
       const ref = isNew ? doc(collection(S.db, 'trips', t.id, 'expenses')) : doc(S.db, 'trips', t.id, 'expenses', e.id);
-      // 整筆覆蓋（改成一位付款人／平均分攤時，舊的多人付款、各自金額欄位會一起消失）
+      // 整筆覆蓋（改成一位付款人／平均分攤時，舊的多人付款、各自金額、收據欄位會一起消失）
       write(setDoc(ref, { ...data, createdBy: e?.createdBy || me, createdAt: e?.createdAt || serverTimestamp() }));
       closeSheet(); toast(navigator.onLine ? '已儲存' : '已儲存，恢復連線後會自動同步');
     });
