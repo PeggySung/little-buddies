@@ -293,8 +293,13 @@ export function openSheet(html, onOpen) {
   bg.innerHTML = `<div class="sheet" role="dialog" aria-modal="true">${html}</div>`;
   document.body.appendChild(bg);
   document.body.style.overflow = 'hidden';
-  bg.addEventListener('click', e => { if (e.target === bg || e.target.closest('[data-close]')) closeSheet(); });
-  bg.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); });
+  // 點外面灰色區域不會關掉（避免填到一半誤觸）；按 ✕ 或 Esc 才關，有改過內容會先確認
+  let dirty = false;
+  bg.addEventListener('input', () => { dirty = true; });
+  bg.addEventListener('change', () => { dirty = true; });
+  const tryClose = () => { if (!dirty || confirm('還沒儲存，確定要關掉嗎？')) closeSheet(); };
+  bg.addEventListener('click', e => { if (e.target.closest('[data-close]')) tryClose(); });
+  bg.addEventListener('keydown', e => { if (e.key === 'Escape') tryClose(); });
   onOpen?.(bg.firstElementChild);
   bg.querySelector('input,textarea,select')?.focus({ preventScroll: true });
 }
