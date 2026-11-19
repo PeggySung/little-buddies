@@ -533,7 +533,7 @@ export function renderTripChecklist(ctx, id) {
   $('#main').innerHTML = `<div class="wrap has-tabs has-fab">${ctx.topBar(`<div class="row" style="gap:4px;min-width:0">${homeBtn}
       <div style="min-width:0"><div class="title ellip" style="font-size:17px">${esc(t.name)}</div><div class="tiny faint ellip">${esc(placesText(t.places))}</div></div></div>`)}
     <div class="ttabs" role="tablist" aria-label="清單">
-      <button type="button" role="tab" data-ls="ck" aria-selected="${seg === 'ck'}">準備清單</button><button type="button" role="tab" data-ls="shop" aria-selected="${seg === 'shop'}">購物清單</button></div>
+      <button type="button" role="tab" data-ls="ck" aria-selected="${seg === 'ck'}">${ic.list}準備清單</button><button type="button" role="tab" data-ls="shop" aria-selected="${seg === 'shop'}">${ic.bag}購物清單</button></div>
     <div id="${seg === 'ck' ? 'ckBody' : 'shBody'}" style="display:flex;flex-direction:column;gap:14px"></div>
   </div><button type="button" class="fab hidden" id="fab" aria-label="新增">${ic.plus}</button>${tabBar(id, 'list')}`;
   ctx.bindTop(); bindTabs();
