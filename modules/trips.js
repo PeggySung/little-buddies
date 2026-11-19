@@ -89,7 +89,7 @@ function stampHTML(t, size = 72, rot = -9) {
   const en = (c ? c.en : (p.countryName || '')).toUpperCase().slice(0, 22);
   const cname = (c ? c.name : p.countryName) || '';
   const L = fitLabel((p.city || cname || '').trim(), cname);
-  const enFs = Math.max(0.07, Math.min(0.12, 0.6 / Math.max(1, textEm(en) * 0.95)));
+  const enFs = Math.max(0.06, Math.min(0.12, 0.62 / Math.max(1, textEm(en) * 1.12 + en.length * 0.06)));
   const ym = (t.start || '').slice(0, 7).replace('-', '.');
   return `<div class="stamp" style="--s:${size}px;transform:rotate(${rot}deg)" aria-hidden="true"><div>
     <b class="num" style="font-size:calc(var(--s) * ${enFs.toFixed(3)})">${esc(en)}</b><span class="title${L.two ? ' two' : ''}" style="font-size:calc(var(--s) * ${L.fs})">${esc(L.text)}</span><i class="num">${esc(ym)}</i></div></div>`;
@@ -107,7 +107,7 @@ function tripCard(t, uid) {
     <div class="trip-top">
       <div style="display:flex;flex-direction:column;gap:6px;min-width:0">
         <div class="title" style="font-size:19px;line-height:1.35">${esc(t.name)}</div>
-        <div class="small muted">${esc(placesText(t.places))}</div>
+        <div class="small muted brk">${esc(placesText(t.places))}</div>
         <div class="num small muted" style="font-weight:700">${fmtRange(t.start, t.end)} · ${dayCount(t.start, t.end)} 天</div>
       </div>
       ${stampHTML(t, 56, 12)}
@@ -188,7 +188,7 @@ export function renderTripForm(ctx, tripId) {
             ${COUNTRIES.map(c => `<option value="${c.code}" ${p.country === c.code ? 'selected' : ''}>${c.name}</option>`).join('')}
             <option value="${OTHER}" ${p.country === OTHER ? 'selected' : ''}>其他國家</option></select>
           ${p.country === OTHER ? `<input class="input" data-pn="${i}" maxlength="40" value="${esc(p.countryName || '')}" placeholder="國家" aria-label="國家名稱">` : ''}
-          <input class="input" data-pcity="${i}" maxlength="60" value="${esc(p.city || '')}" placeholder="城市／地區（選填）" aria-label="第 ${i + 1} 個目的地的城市">
+          <input class="input" data-pcity="${i}" maxlength="100" value="${esc(p.city || '')}" placeholder="城市／地區（選填）" aria-label="第 ${i + 1} 個目的地的城市">
           ${f.places.length > 1 ? `<button type="button" class="iconbtn" data-prm="${i}" aria-label="移除這個目的地">✕</button>` : ''}
         </div>`).join('')}
         <button type="button" class="btn" id="addPlace">${ic.plus}再加一個目的地</button>
@@ -286,7 +286,7 @@ export function renderTrip(ctx, id) {
       <div class="trip-top">
         <div style="display:flex;flex-direction:column;gap:6px;min-width:0">
           <h1 class="title" style="font-size:23px;line-height:1.35">${esc(t.name)}</h1>
-          <div class="small muted">${esc(placesText(t.places))}</div>
+          <div class="small muted brk">${esc(placesText(t.places))}</div>
           <div class="row" style="gap:8px"><span class="num small" style="font-weight:700">${fmtRange(t.start, t.end)} · ${dayCount(t.start, t.end)} 天</span><span class="chip">${STATUS_LABEL[st]}</span></div>
         </div>
         ${stampHTML(t, 72, -9)}
@@ -404,7 +404,7 @@ export async function renderJoin(ctx, code) {
       ${stampHTML(fake, 96, -8)}
       <div class="small muted">${esc(inv.ownerName)} 邀請你加入</div>
       <h1 class="title" style="font-size:25px;line-height:1.35">${esc(inv.tripName)}</h1>
-      <div class="small muted">${esc(placesText(inv.places))}</div>
+      <div class="small muted brk">${esc(placesText(inv.places))}</div>
       <div class="num small" style="font-weight:700">${fmtRange(inv.start, inv.end)} · ${dayCount(inv.start, inv.end)} 天</div>
     </div>
     <section class="card row" style="flex-direction:row;align-items:center">${avatarHTML(S.profile, 'lg')}
