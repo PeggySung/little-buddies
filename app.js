@@ -7,10 +7,11 @@ import { firebaseConfig } from './firebase-config.js';
 import { stopAllItems, resetPlanUI, isBusy } from './modules/plan.js';
 import { stopAllBookings } from './modules/book.js';
 import { stopAllChecklist } from './modules/checklist.js';
+import { stopAllMoney } from './modules/money.js';
 import { $, esc, ic, applyTheme, toggleTheme, isDark, copyText } from './modules/ui.js';
 import { CORE } from './modules/color.js';
 import { renderOnboarding, renderProfile, renderEdit, renderQuizRedo, avatarHTML } from './modules/profile.js';
-import { renderHome, renderTripForm, renderTrip, renderTripPlan, renderTripBook, renderTripChecklist, renderJoin, ensureTrips, stopTrips, cleanup, makeSync, pendingJoin } from './modules/trips.js';
+import { renderHome, renderTripForm, renderTrip, renderTripPlan, renderTripBook, renderTripChecklist, renderTripMoney, renderJoin, ensureTrips, stopTrips, cleanup, makeSync, pendingJoin } from './modules/trips.js';
 
 applyTheme();
 
@@ -115,6 +116,7 @@ function render(keep = false) {
   if ((m = route.match(/^trip\/([\w-]+)\/plan\/sort\/(\d+)$/))) return renderTripPlan(ctx, m[1], +m[2]);
   if ((m = route.match(/^trip\/([\w-]+)\/book(?:\/([\w-]+))?$/))) return renderTripBook(ctx, m[1], m[2] || null);
   if ((m = route.match(/^trip\/([\w-]+)\/list$/))) return renderTripChecklist(ctx, m[1]);
+  if ((m = route.match(/^trip\/([\w-]+)\/money$/))) return renderTripMoney(ctx, m[1]);
   if ((m = route.match(/^join\/([A-Za-z0-9]+)$/))) return renderJoin(ctx, m[1]);
   if (route !== '') { location.replace('#/'); return; }
   renderHome(ctx);
@@ -122,7 +124,7 @@ function render(keep = false) {
 // 旅程資料有變動時，只重畫「看資料」的頁面（表單頁不重畫，以免打到一半的字不見）
 function onTrips() {
   const route = location.hash.replace(/^#\/?/, '');
-  if (route === '' || /^trip\/[\w-]+$/.test(route) || (/^trip\/[\w-]+\/(plan|book|list)$/.test(route) && !isBusy())) render(true);
+  if (route === '' || /^trip\/[\w-]+$/.test(route) || (/^trip\/[\w-]+\/(plan|book|list|money)$/.test(route) && !isBusy() && !document.querySelector('#sheet'))) render(true);
 }
 function afterOnboard() {
   ensureTrips(ctx, onTrips);
@@ -130,7 +132,7 @@ function afterOnboard() {
   location.hash = code ? `#/join/${code}` : '#/';
   render();
 }
-const ctx = { S, render, topBar, bindTop, brand, afterOnboard, inviteCode: () => pendingJoin.get(), signOut: () => { stopTrips(); stopAllItems(); stopAllBookings(); stopAllChecklist(); return signOut(auth); }, setProfile: p => { S.profile = p; } };
+const ctx = { S, render, topBar, bindTop, brand, afterOnboard, inviteCode: () => pendingJoin.get(), signOut: () => { stopTrips(); stopAllItems(); stopAllBookings(); stopAllChecklist(); stopAllMoney(); return signOut(auth); }, setProfile: p => { S.profile = p; } };
 ctx.afterProfileSave = makeSync(ctx);
 window.addEventListener('hashchange', () => { resetPlanUI(); render(); });
 

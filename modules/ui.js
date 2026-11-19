@@ -43,6 +43,7 @@ export const ic = {
   grip: svg('<circle cx="9" cy="6" r="1.3"/><circle cx="15" cy="6" r="1.3"/><circle cx="9" cy="12" r="1.3"/><circle cx="15" cy="12" r="1.3"/><circle cx="9" cy="18" r="1.3"/><circle cx="15" cy="18" r="1.3"/>', 20),
   up: svg('<path d="M6 15l6-6 6 6"/>', 20, 2.2),
   down: svg('<path d="M6 9l6 6 6-6"/>', 20, 2.2),
+  lock: svg('<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>', 16, 2),
   phone: svg('<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a1 1 0 0 1-1 1A16 16 0 0 1 4 5a1 1 0 0 1 1-1"/>', 16),
   // 測驗選項
   sunset: svg('<path d="M3 17h18M6.5 17a5.5 5.5 0 0 1 11 0M12 6.5V4.5M6.3 9.3 4.9 7.9M17.7 9.3l1.4-1.4M7 20.5h10"/>'),

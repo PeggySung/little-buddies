@@ -7,10 +7,11 @@ import { adjustForPeers } from './color.js';
 import { renderPlan, watchItems, isBusy, exitSort } from './plan.js';
 import { renderBook, watchBookings } from './book.js';
 import { renderChecklist, watchChecklist } from './checklist.js';
+import { renderMoney, watchMoney } from './money.js';
 import { COUNTRIES, countryBy, CURRENCIES, CUR_NAME, timeZones, todayIn, dayCount, tripStatus, STATUS_LABEL,
   fmtRange, placesText } from './places.js';
 
-export const APP_VERSION = 'v0.5';
+export const APP_VERSION = 'v0.6';
 const OTHER = 'OT';
 // 旅程裡的分頁（資訊、行程…）是同一層，左上角放回首頁的 logo；點進去的細項頁才用「上一頁」箭頭
 const homeBtn = `<a class="iconbtn home-btn" href="#/" aria-label="回首頁（旅程列表）" style="margin-left:-6px"><img src="img/icon-192.png" alt="" width="32" height="32"></a>`; // 清單以外的國家
@@ -320,10 +321,6 @@ export function renderTrip(ctx, id) {
         <button class="btn ${active.length ? '' : 'pri'} full" id="newInvite">${ic.plus}${active.length ? '再產生一組' : '產生邀請連結'}</button>
         <p class="tiny faint" style="margin:0">連結 ${INVITE_DAYS} 天後失效；不想再讓人加入，按「停用」就好。</p>
       </section>` : ''}
-      <section class="card">
-        <div class="row" style="justify-content:space-between"><h2 class="title" style="font-size:17px">接下來會開放</h2><span class="chip">製作中</span></div>
-        <p class="small muted" style="margin:0">記帳（分攤、結算、多幣別）會在下一版加上。</p>
-      </section>
       ${owner ? `<a class="btn full" href="#/trip/${esc(id)}/edit">${ic.edit}編輯旅程</a>` : ''}
       ${!member ? '<p class="tiny faint" style="text-align:center;margin:0">你沒有參加這趟旅程，只能看摘要。</p>' : ''}
     </div>${member ? tabBar(id, 'info') : ''}`;
@@ -435,7 +432,7 @@ export async function renderJoin(ctx, code) {
 
 /* ───────── 旅程分頁列 ───────── */
 function tabBar(id, active) {
-  const tabs = [['info', '資訊', `#/trip/${id}`], ['trip', '行程', `#/trip/${id}/plan`], ['ticket', '交通住宿', `#/trip/${id}/book`], ['list', '清單', `#/trip/${id}/list`], ['money', '記帳', '']];
+  const tabs = [['info', '資訊', `#/trip/${id}`], ['trip', '行程', `#/trip/${id}/plan`], ['ticket', '交通住宿', `#/trip/${id}/book`], ['list', '清單', `#/trip/${id}/list`], ['money', '記帳', `#/trip/${id}/money`]];
   return `<nav class="tabbar" aria-label="旅程分頁">${tabs.map(([k, l, href]) => href
     ? `<a href="${href}" class="${active === k ? 'on' : ''}" ${active === k ? 'aria-current="page"' : ''}><span class="pill">${ic[k]}</span>${l}</a>`
     : `<button type="button" class="soon" data-soon="${l}"><span class="pill">${ic[k]}</span>${l}</button>`).join('')}</nav>`;
@@ -502,6 +499,28 @@ export function renderTripBook(ctx, id, focusId = null) {
 }
 
 /* ───────── 準備清單頁 ───────── */
+export function renderTripMoney(ctx, id) {
+  const { S } = ctx;
+  const t = (S.trips || []).find(x => x.id === id);
+  if (!t || !(t.memberUids || []).includes(S.user.uid)) {
+    $('#main').innerHTML = `<div class="wrap">${ctx.topBar(homeBtn)}${S.trips ? '<section class="card"><b>找不到這趟旅程</b><p class="small muted" style="margin:0">可能已經被刪除，或你不是這趟旅程的成員。</p></section>' : '<div class="spinner" style="margin:40px auto"></div>'}</div>`;
+    ctx.bindTop(); return;
+  }
+  $('#main').innerHTML = `<div class="wrap has-tabs has-fab">${ctx.topBar(`<div class="row" style="gap:4px;min-width:0">${homeBtn}
+      <div style="min-width:0"><div class="title ellip" style="font-size:17px">${esc(t.name)}</div><div class="tiny faint ellip">${esc(placesText(t.places))}</div></div></div>`)}
+    <div id="mnBody" style="display:flex;flex-direction:column;gap:14px"></div>
+  </div><button type="button" class="fab hidden" id="fab" aria-label="記一筆">${ic.plus}</button>${tabBar(id, 'money')}`;
+  ctx.bindTop(); bindTabs();
+  renderMoney(ctx, t);
+  if (unsubs.mnFor !== id) {
+    unsubs.mnFor = id;
+    unsubs.push(watchMoney(ctx, id, () => {
+      if (isBusy() || location.hash !== `#/trip/${id}/money` || document.querySelector('#sheet')) return;
+      const cur = (S.trips || []).find(x => x.id === id); if (cur) renderMoney(ctx, cur);
+    }));
+  }
+}
+
 export function renderTripChecklist(ctx, id) {
   const { S } = ctx;
   const t = (S.trips || []).find(x => x.id === id);
