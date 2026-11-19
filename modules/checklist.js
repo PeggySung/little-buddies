@@ -136,6 +136,8 @@ export function renderChecklist(ctx, t) {
     const ia = CAT_ORDER.indexOf(a), ib = CAT_ORDER.indexOf(b);
     return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
   });
+  const fold = readFold(t.id);
+  const catAll = c => shown.filter(x => (x.cat || '其他') === c).every(x => itemDone(t, x));
   const pct = myItems.length ? Math.round(myDone / myItems.length * 100) : 0;
   const bar = (p, label) => `<div class="bar" role="progressbar" aria-valuenow="${p}" aria-valuemin="0" aria-valuemax="100" aria-label="${esc(label)}"><i style="width:${p}%"></i></div>`;
   const seg = `<div class="seg" role="group" aria-label="顯示">
@@ -150,18 +152,30 @@ export function renderChecklist(ctx, t) {
   host.innerHTML = `
     <div class="dayhead"><h2 class="title">準備清單</h2></div>
     ${list.length ? seg + (view === 'mine' ? mineCard : teamCard(t, list, me, bar)) : ''}
+    ${cats.length > 1 ? `<button type="button" class="linkbtn fold-all" id="ckFoldAll">${cats.every(c => isFolded(fold, c, catAll(c))) ? '全部展開' : '全部收合'}</button>` : ''}
     ${!list.length ? `<div class="card empty"><p class="small muted" style="margin:0">還沒有清單。可以從範本一次加入常用項目，再刪掉不需要的，或自己一項一項新增。</p>
         <button class="btn pri full" id="ckTpl">從範本加入</button></div>`
       : !shown.length ? '<div class="card empty"><p class="small muted" style="margin:0">你目前沒有要準備的項目。</p></div>'
       : cats.map(c => {
         const xs = shown.filter(x => (x.cat || '其他') === c).sort((a, b) => (a.order || 0) - (b.order || 0));
         const n = xs.filter(x => itemDone(t, x)).length;
-        return `<section class="sec"><h3 class="sec-h">${esc(c)} <span class="faint">${n}/${xs.length}</span></h3>
-          <div class="ck-list">${xs.map(x => rowHTML(t, x, me)).join('')}</div></section>`;
+        const open = !isFolded(fold, c, n === xs.length);
+        return `<section class="sec"><h3 style="margin:0"><button type="button" class="sec-h fold" data-fold="${esc(c)}" aria-expanded="${open}">
+            <span>${esc(c)} <span class="${n === xs.length ? 'ok' : 'faint'}">${n}/${xs.length}${n === xs.length ? ' ✓' : ''}</span></span>${ic.down}</button></h3>
+          ${open ? `<div class="ck-list">${xs.map(x => rowHTML(t, x, me)).join('')}</div>` : ''}</section>`;
       }).join('')}
     ${list.length ? `<div class="grid2"><button class="btn" id="ckTpl">從範本加入</button><button class="btn" id="ckAdd">${ic.plus}新增項目</button></div>`
       : `<button class="btn full" id="ckAdd">${ic.plus}自己新增項目</button>`}`;
   $$('[data-view]', host).forEach(b => b.addEventListener('click', () => { localSet('ckview:' + t.id, b.dataset.view); renderChecklist(ctx, t); }));
+  $$('[data-fold]', host).forEach(b => b.addEventListener('click', () => {
+    fold[b.dataset.fold] = b.getAttribute('aria-expanded') === 'true'; // true＝收起來
+    saveFold(t.id, fold); renderChecklist(ctx, t);
+    $(`[data-fold="${CSS.escape(b.dataset.fold)}"]`, host)?.focus();
+  }));
+  $('#ckFoldAll', host)?.addEventListener('click', e => {
+    const close = e.currentTarget.textContent === '全部收合';
+    cats.forEach(c => { fold[c] = close; }); saveFold(t.id, fold); renderChecklist(ctx, t);
+  });
   $('#ckAdd', host)?.addEventListener('click', () => editItem(ctx, t, null));
   $('#ckTpl', host)?.addEventListener('click', () => chooseTemplates(ctx, t));
   $$('[data-tick]', host).forEach(b => b.addEventListener('click', () => {
@@ -183,6 +197,10 @@ export function renderChecklist(ctx, t) {
   }));
   $$('[data-cedit]', host).forEach(b => b.addEventListener('click', () => editItem(ctx, t, list.find(i => i.id === b.dataset.cedit))));
 }
+/* 分類收合：記在這台裝置；沒動過的分類，全部完成就自動收起來 */
+function readFold(id) { try { return JSON.parse(localGet('ckfold:' + id) || '{}'); } catch { return {}; } }
+function saveFold(id, f) { localSet('ckfold:' + id, JSON.stringify(f)); }
+const isFolded = (f, c, allDone) => c in f ? !!f[c] : allDone;
 function teamCard(t, list, me, bar) {
   const ms = (t.memberUids || []).filter(u => t.members?.[u]);
   const doneAll = list.filter(x => itemDone(t, x)).length;

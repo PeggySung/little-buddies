@@ -322,8 +322,8 @@ function editItem(ctx, t, x, day, japan) {
         <optgroup label="交通">${Object.entries(KINDS).filter(([, v]) => v.group === 'go').map(([k, v]) => `<option value="${k}" ${kindOf(x) === k ? 'selected' : ''}>${v.label}</option>`).join('')}</optgroup></select></label>
     </div>
     <div class="grid2">
-      <label class="field"><span>開始</span><input class="input" type="time" step="300" id="fStart" value="${esc(x.start)}"></label>
-      <label class="field"><span>結束（選填）</span><input class="input" type="time" step="300" id="fEnd" value="${esc(x.end)}"></label>
+      <div class="field"><span>開始</span><time-24 class="input t24" id="fStart" value="${esc(x.start)}" aria-label="開始"></time-24></div>
+      <div class="field"><span>結束（選填）</span><time-24 class="input t24" id="fEnd" value="${esc(x.end)}" aria-label="結束"></time-24></div>
     </div>
     <div class="field"><label for="fDur" id="fDurLbl">${durLabel(kindOf(x))}</label>
       <div class="dur-row"><input class="input" type="number" inputmode="numeric" min="0" max="1440" step="5" id="fDur" value="${durOf(x) ?? ''}" placeholder="例如 60">

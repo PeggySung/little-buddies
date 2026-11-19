@@ -189,7 +189,7 @@ function chooseType(ctx, t) {
 const F = (id, label, val, attrs = '') => `<label class="field"><span>${label}</span><input class="input" id="${id}" value="${esc(val || '')}" ${attrs}></label>`;
 let RANGE = { min: '', max: '' }; // 目前編輯中旅程的日期範圍
 const D = (id, label, val) => F(id, label, val, `type="date" min="${RANGE.min}" max="${RANGE.max}"`);
-const T = (id, label, val) => F(id, label, val, 'type="time" step="300"');
+const T = (id, label, val) => `<div class="field"><span>${label}</span><time-24 class="input t24" id="${id}" value="${esc(val || '')}" aria-label="${label}"></time-24></div>`;
 
 function editBooking(ctx, t, b, type) {
   const { S } = ctx;
