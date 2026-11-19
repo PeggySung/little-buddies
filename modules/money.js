@@ -1,6 +1,6 @@
 // 記帳：每種幣別分開結算（日圓的帳用日圓還、台幣的帳用台幣還，不用匯率）
 // 多人付款、各自金額、旅途中先結清、代購、退稅；有人按「已轉帳」後，那個幣別的帳目就鎖定
-import { doc, collection, onSnapshot, setDoc, updateDoc, deleteDoc, serverTimestamp, runTransaction } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import { doc, collection, onSnapshot, setDoc, updateDoc, deleteDoc, serverTimestamp, runTransaction, getDocs, query, where, arrayUnion, arrayRemove } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { $, $$, esc, ic, toast, localGet, localSet, copyText } from './ui.js';
 import { avatarHTML } from './profile.js';
 import { openSheet, closeSheet, kindIcon } from './plan.js';
@@ -199,7 +199,7 @@ export function rcCalc(A, rc, cur) {
   rows.forEach(x => {
     if (x.price !== '' && x.price != null && isNaN(x.base)) err.push(`第 ${x.i + 1} 行的價格看不懂`);
     else if (x.taxed > 0 && !x.px && !Object.values(x.who || {}).some(q => q > 0)) err.push(`第 ${x.i + 1} 行${x.name ? `「${x.name}」` : ''}還沒選是誰的`);
-    if (x.taxed > 0 && x.px && !x.px.owner) err.push(`第 ${x.i + 1} 行的代購要選負責人`);
+    if (x.taxed > 0 && x.px && (!x.px.owner || (!x.px.cid && !x.px.client))) err.push(`第 ${x.i + 1} 行的代購要選委託人`);
   });
   const live = rows.filter(x => x.taxed > 0), S = live.reduce((n, x) => n + x.taxed, 0);
   const D = isNaN(A) ? 0 : A - S;
@@ -210,7 +210,7 @@ export function rcCalc(A, rc, cur) {
   if (live.length && !isNaN(A) && S && Math.abs(D) > S * 0.3) warn.push(D < 0 ? `品項合計比實付多 ${money(-D, cur)}，是不是多打了一行？` : `實付比品項合計多 ${money(D, cur)}，是不是漏了一行？`);
   const shares = {}, byOwner = {}, proxy = [];
   for (const x of live) {
-    if (x.px) { byOwner[x.px.owner] = (byOwner[x.px.owner] || 0) + x.cost; proxy.push({ owner: x.px.owner, client: x.px.client || '', name: x.name || '', amount: x.cost / 100 }); continue; }
+    if (x.px) { byOwner[x.px.owner] = (byOwner[x.px.owner] || 0) + x.cost; proxy.push({ owner: x.px.owner, cid: x.px.cid || null, client: x.px.client || '', name: x.name || '', amount: x.cost / 100, k: x.k || rk() }); continue; }
     const ws = Object.fromEntries(Object.entries(x.who || {}).filter(([, q]) => q > 0)), ks = Object.keys(ws);
     const kk = x.cost % U === 0 ? U : 1, y = lrAlloc(x.cost / kk, ks, ws);
     x.parts = {}; ks.forEach(u => { const v = y[u] * kk; x.parts[u] = v; shares[u] = (shares[u] || 0) + v; });
@@ -220,13 +220,13 @@ export function rcCalc(A, rc, cur) {
   return { rows, live, S, D, shares, byOwner, proxy, err, warn, looksEx };
 }
 const rcClean = rc => ({ ex: !!rc.ex, rate: Number(rc.rate) || 0, low: Number(rc.low) || 0,
-  items: rc.items.filter(x => evalAmt(x.price) > 0).map(x => ({ name: x.name || '', price: evalAmt(x.price), who: x.px ? {} : Object.fromEntries(Object.entries(x.who || {}).filter(([, q]) => q > 0)),
-    px: x.px ? { owner: x.px.owner, client: x.px.client || '' } : null, low: !!x.low, noDisc: !!x.noDisc })) });
+  items: rc.items.filter(x => evalAmt(x.price) > 0).map(x => ({ k: x.k || rk(), name: x.name || '', price: evalAmt(x.price), who: x.px ? {} : Object.fromEntries(Object.entries(x.who || {}).filter(([, q]) => q > 0)),
+    px: x.px ? { owner: x.px.owner, cid: x.px.cid || null, client: x.px.client || '' } : null, low: !!x.low, noDisc: !!x.noDisc })) });
 
 /* ───────── 即時資料（只有打開記帳頁時才訂閱）───────── */
 const cache = {};
 export function watchMoney(ctx, tripId, onChange) {
-  const c = cache[tripId] || (cache[tripId] = { list: null, settle: null, unsubs: [], listeners: new Set() });
+  const c = cache[tripId] || (cache[tripId] = { list: null, settle: null, clients: null, unsubs: [], listeners: new Set() });
   c.listeners.add(onChange);
   if (!c.unsubs.length) {
     const err = e => { console.error(e); toast('讀取記帳失敗：' + (e?.code || e?.message)); };
@@ -235,6 +235,9 @@ export function watchMoney(ctx, tripId, onChange) {
     }, err));
     c.unsubs.push(onSnapshot(collection(ctx.S.db, 'trips', tripId, 'settle'), snap => {
       c.settle = Object.fromEntries(snap.docs.map(d => [d.id, d.data()])); c.listeners.forEach(f => f());
+    }, err));
+    c.unsubs.push(onSnapshot(collection(ctx.S.db, 'trips', tripId, 'clients'), snap => {
+      c.clients = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant')); c.listeners.forEach(f => f());
     }, err));
   }
   return () => c.listeners.delete(onChange);
@@ -252,16 +255,16 @@ const dayLabel = ds => ds === '9999-12-31' ? '沒填日期' : `${+ds.slice(5, 7)
 export function renderMoney(ctx, t) {
   const host = $('#mnBody'); if (!host) return;
   const c = cache[t.id];
-  if (!c || c.list == null || c.settle == null) { host.innerHTML = '<div class="spinner" style="margin:30px auto" role="status" aria-label="載入中"></div>'; return; }
+  if (!c || c.list == null || c.settle == null || c.clients == null) { host.innerHTML = '<div class="spinner" style="margin:30px auto" role="status" aria-label="載入中"></div>'; return; }
   const me = ctx.S.user.uid, list = c.list, solo = mems(t).length <= 1;
-  const hasPx = list.some(e => (e.proxy || []).length);
+  const hasPx = list.some(e => (e.proxy || []).length) || c.clients.length > 0;
   let tab = localGet('mntab:' + t.id) || 'list';
-  if (tab === 'proxy' && !hasPx) tab = 'list';
+  void hasPx;
   if (tab === 'settle' && solo) tab = 'list';
-  const tabs = [['list', '明細'], ...(solo ? [] : [['settle', '結算']]), ...(hasPx ? [['proxy', '代購']] : [])];
+  const tabs = [['list', '明細'], ...(solo ? [] : [['settle', '結算']]), ['proxy', '代購']];
   host.innerHTML = `<div class="dayhead"><h2 class="title">記帳</h2></div>
     ${tabs.length > 1 ? `<div class="seg" role="group" aria-label="記帳分頁">${tabs.map(([k, l]) => `<button type="button" data-mtab="${k}" aria-pressed="${tab === k}">${l}</button>`).join('')}</div>` : ''}
-    ${tab === 'settle' ? settleHTML(t, list, c.settle) : tab === 'proxy' ? proxyHTML(t, list) : listHTML(t, list, me, solo)}`;
+    ${tab === 'settle' ? settleHTML(t, list, c.settle) : tab === 'proxy' ? proxyHTML(t, list, me) : listHTML(t, list, me, solo)}`;
   $$('[data-mtab]', host).forEach(b => b.addEventListener('click', () => { localSet('mntab:' + t.id, b.dataset.mtab); renderMoney(ctx, t); window.scrollTo(0, 0); }));
   $$('[data-ex]', host).forEach(b => b.addEventListener('click', () => editExpense(ctx, t, list.find(e => e.id === b.dataset.ex))));
   $$('[data-mfold]', host).forEach(b => b.addEventListener('click', () => {
@@ -272,7 +275,14 @@ export function renderMoney(ctx, t) {
   $('#mnAdd', host)?.addEventListener('click', () => editExpense(ctx, t, null));
   $$('[data-settle]', host).forEach(b => b.addEventListener('click', () => doSettle(ctx, t, b.dataset.settle, b)));
   $$('[data-paid]', host).forEach(b => b.addEventListener('click', () => setPaid(ctx, t, b.dataset.paid, b)));
-  $$('[data-pxcopy]', host).forEach(b => b.addEventListener('click', () => copyText(b.dataset.pxcopy).then(() => toast('已複製對帳內容'))));
+  $('#pxNew', host)?.addEventListener('click', () => clientDialog(ctx, t));
+  $('#pxImp', host)?.addEventListener('click', () => importClients(ctx, t));
+  $$('[data-cl]', host).forEach(b => b.addEventListener('click', () => clientSheet(ctx, t, b.dataset.cl)));
+  $$('[data-adopt]', host).forEach(b => b.addEventListener('click', () => {
+    const [owner, name] = b.dataset.adopt.split('|');
+    write(setDoc(doc(collection(ctx.S.db, 'trips', t.id, 'clients')), { name, owner, note: '', rate: null, pays: [], createdBy: ctx.S.user.uid, createdAt: serverTimestamp(), updatedBy: ctx.S.user.uid, updatedAt: serverTimestamp() }));
+    toast(`已幫「${name}」建檔`);
+  }));
   const fab = $('#fab');
   if (fab) { fab.classList.remove('hidden'); fab.onclick = () => editExpense(ctx, t, null); }
 }
@@ -383,23 +393,177 @@ async function setPaid(ctx, t, key, btn) {
   } catch (e) { toast(e.message === 'gone' ? '結算結果已被清除，請重新整理' : '更新失敗：' + (e?.code || e?.message)); btn.disabled = false; }
 }
 
-/* ───────── 代購：負責人向委託人收錢的對帳 ───────── */
-function proxyHTML(t, list) {
-  const rows = [];
-  for (const e of list) for (const x of e.proxy || []) if (toC(x.amount) > 0) rows.push({ e, x });
-  const owners = orderOf(t, rows.map(r => r.x.owner)).filter(u => rows.some(r => r.x.owner === u));
-  return `<p class="tiny faint" style="margin:0">幫不在這趟的朋友買的東西。成本算在負責人身上，不分給大家；負責人自己向委託人收錢。</p>` + owners.map(u => {
-    const mine = rows.filter(r => r.x.owner === u), clients = [...new Set(mine.map(r => r.x.client || '（沒填委託人）'))];
-    return `<section class="card" style="gap:12px"><div class="row">${av(t, u, 'sm')}<b>${esc(nm(t, u))} 負責的代購</b></div>
-      ${clients.map(cl => {
-        const rs = mine.filter(r => (r.x.client || '（沒填委託人）') === cl).sort((a, b) => expDay(a.e).localeCompare(expDay(b.e)));
-        const tot = {}; rs.forEach(r => tot[r.e.cur] = (tot[r.e.cur] || 0) + toC(r.x.amount));
-        const totText = Object.entries(tot).map(([c, v]) => money(v, c)).join('＋');
-        const text = `${cl} 的代購（${t.name}）\n` + rs.map(r => `${r.e.date ? dayLabel(r.e.date) + ' ' : ''}${r.x.name || r.e.name}　${money(toC(r.x.amount), r.e.cur)}`).join('\n') + `\n合計 ${totText}`;
-        return `<div class="px-client"><div class="row" style="justify-content:space-between"><b class="small">${esc(cl)}</b><b class="num">${totText}</b></div>
-          ${rs.map(r => `<div class="row tiny muted" style="justify-content:space-between"><span>${r.e.date ? dayLabel(r.e.date) + '・' : ''}${esc(r.x.name || r.e.name)}</span><span class="num">${money(toC(r.x.amount), r.e.cur)}</span></div>`).join('')}
-          <button type="button" class="linkbtn" data-pxcopy="${esc(text)}" style="align-self:flex-start">${ic.copy}複製對帳內容</button></div>`;
-      }).join('')}</section>`;
+/* ───────── 委託人（每趟旅程一份；和成員結算無關）─────────
+   trips/{id}/clients/{cid}：{name, owner 負責收錢的成員, note, rate 代購匯率（1 當地幣 ＝ ? 結算幣）, pays 收款紀錄}
+   代購項目（expense.proxy[]）用 cid 對到委託人；舊資料沒有 cid 的，照「名字＋負責人」對 */
+const clientsOf = t => cache[t.id]?.clients || [];
+const rk = () => Math.random().toString(36).slice(2, 8);
+const pxKey = (e, x, i) => `${e.id}:${x.k || '#' + i}`;
+const matchClient = (cs, x) => x.cid ? cs.find(c => c.id === x.cid) : cs.find(c => c.name === x.client && c.owner === x.owner);
+// 某位委託人的代購項目（照付款日期）、未收／已收
+function clientState(t, list, c) {
+  const cs = clientsOf(t), all = [];
+  for (const e of list) (e.proxy || []).forEach((x, i) => { if (toC(x.amount) > 0 && matchClient(cs, x)?.id === c.id) all.push({ key: pxKey(e, x, i), e, x, amt: toC(x.amount) }); });
+  all.sort((a, b) => expDay(a.e).localeCompare(expDay(b.e)));
+  const pays = Array.isArray(c.pays) ? c.pays : [], paidKeys = new Set(pays.flatMap(p => p.keys || []));
+  return { all, pays, unpaid: all.filter(i => !paidKeys.has(i.key)), paid: all.filter(i => paidKeys.has(i.key)) };
+}
+// 要收多少：各幣別合計；有代購匯率時，當地幣換成結算幣（合計後無條件進位一次）
+function dueOf(t, items, c) {
+  const tot = {}; items.forEach(i => tot[i.e.cur] = (tot[i.e.cur] || 0) + i.amt);
+  const rate = Number(c?.rate), local = t.currency, settle = t.settleCurrency;
+  let conv = null;
+  if (rate > 0 && local !== settle && tot[local]) { const U = unitOf(settle); conv = Math.ceil(tot[local] * rate / U - 1e-9) * U + (tot[settle] || 0); }
+  const text = Object.entries(tot).map(([cur, v]) => money(v, cur)).join('＋') || money(0, local);
+  return { tot, conv, text: text + (conv != null ? `（≈ ${money(conv, settle)}）` : ''), short: conv != null ? money(conv, settle) : text };
+}
+const canRate = t => t.currency && t.settleCurrency && t.currency !== t.settleCurrency;
+
+// 疊在彈出視窗上面的小視窗（新增委託人時不會關掉正在填的記帳）
+function openDialog(html, onOpen) {
+  const bg = document.createElement('div');
+  bg.className = 'dlg-bg';
+  bg.innerHTML = `<div class="dlg" role="dialog" aria-modal="true">${html}</div>`;
+  document.body.appendChild(bg);
+  const close = () => bg.remove();
+  bg.addEventListener('keydown', e => { if (e.key === 'Escape') { e.stopPropagation(); close(); bg.dispatchEvent(new Event('cancel')); } });
+  onOpen(bg.firstElementChild, close, bg);
+  bg.querySelector('input,select,textarea,button')?.focus();
+  return close;
+}
+// 新增／編輯委託人。回傳 Promise<委託人 id 或 null>
+function clientDialog(ctx, t, c = null, ownerDef = null) {
+  const { S } = ctx, me = S.user.uid, ms = mems(t);
+  let owner = c?.owner || ownerDef || me;
+  return new Promise(res => {
+    openDialog(`<h3 class="title" style="font-size:18px">${c ? '編輯委託人' : '新增委託人'}</h3>
+      <label class="field"><span>名稱</span><input class="input" id="dName" maxlength="40" value="${esc(c?.name || '')}" placeholder="例如：媽媽、同事小美"></label>
+      ${ms.length > 1 ? `<div class="field"><span>誰負責向他收錢</span><div class="mem-pick" id="dOwn">${ms.map(u => `<button type="button" class="mem" data-own="${esc(u)}" aria-pressed="${owner === u}">${av(t, u, 'sm')}<span>${esc(nm(t, u))}</span></button>`).join('')}</div></div>` : ''}
+      <label class="field"><span>備註（選填）</span><input class="input" id="dNote" maxlength="200" value="${esc(c?.note || '')}" placeholder="LINE 名稱、怎麼付款…"></label>
+      ${canRate(t) ? `<label class="field"><span>代購匯率（選填）</span><div class="row" style="gap:8px"><span class="small nowrap">1 ${esc(t.currency)} ＝</span><input class="input num" id="dRate" inputmode="decimal" value="${c?.rate ? esc(String(c.rate)) : esc(localGet('pxrate:' + t.id) || '')}" placeholder="例如 0.218"><span class="small">${esc(t.settleCurrency)}</span></div>
+        <span class="tiny faint">有填的話，向他收錢時會換算成${esc(curName(t.settleCurrency))}（合計後無條件進位）</span></label>` : ''}
+      <p class="small" id="dErr" style="margin:0;color:var(--danger)"></p>
+      <div class="sheet-acts" style="position:static"><button class="btn" id="dNo">取消</button><button class="btn pri" id="dOk">${c ? '儲存' : '新增'}</button></div>`, (d, close, bg) => {
+      let done = false;
+      const finish = v => { if (done) return; done = true; close(); res(v); };
+      bg.addEventListener('cancel', () => finish(null));
+      $$('[data-own]', d).forEach(b => b.addEventListener('click', () => { owner = b.dataset.own; $$('[data-own]', d).forEach(y => y.setAttribute('aria-pressed', String(y === b))); }));
+      $('#dNo', d).addEventListener('click', () => finish(null));
+      $('#dOk', d).addEventListener('click', () => {
+        const name = $('#dName', d).value.trim(); if (!name) { $('#dErr', d).textContent = '請填名稱'; return; }
+        if (clientsOf(t).some(x => x.name === name && x.owner === owner && x.id !== c?.id)) { $('#dErr', d).textContent = `${nm(t, owner)} 已經有一位叫「${name}」的委託人`; return; }
+        const rv = $('#dRate', d)?.value.trim(), rate = rv ? Number(rv.replace(/[,，\s]/g, '')) : null;
+        if (rv && !(rate > 0 && rate < 100000)) { $('#dErr', d).textContent = '匯率看不懂'; return; }
+        if (rate) localSet('pxrate:' + t.id, String(rate));
+        const data = { name, owner, note: $('#dNote', d).value.trim(), rate: rate || null, updatedBy: me, updatedAt: serverTimestamp() };
+        const ref = c ? doc(S.db, 'trips', t.id, 'clients', c.id) : doc(collection(S.db, 'trips', t.id, 'clients'));
+        write(c ? updateDoc(ref, data) : setDoc(ref, { ...data, pays: [], createdBy: me, createdAt: serverTimestamp() }));
+        // 先放進畫面用的清單，選單馬上看得到
+        const cc = cache[t.id]; if (cc && !c) cc.clients = [...(cc.clients || []), { id: ref.id, ...data, pays: [] }];
+        finish(ref.id);
+      });
+    });
+  });
+}
+// 從自己以前旅程的委託人帶入（只讀自己負責的）
+async function importClients(ctx, t) {
+  const { S } = ctx, me = S.user.uid;
+  const others = (S.trips || []).filter(x => x.id !== t.id && (x.memberUids || []).includes(me));
+  if (!others.length) { toast('還沒有其他旅程'); return; }
+  toast('讀取以前的委託人…');
+  const have = new Set(clientsOf(t).filter(c => c.owner === me).map(c => c.name)), found = new Map();
+  try {
+    for (const tr of others) {
+      const qs = await getDocs(query(collection(S.db, 'trips', tr.id, 'clients'), where('owner', '==', me)));
+      qs.docs.forEach(d => { const v = d.data(); if (!have.has(v.name) && !found.has(v.name)) found.set(v.name, { ...v, from: tr.name }); });
+    }
+  } catch (e) { toast('讀取失敗：' + (e?.code || e?.message)); return; }
+  if (!found.size) { toast('以前的旅程沒有其他委託人可以帶入'); return; }
+  const arr = [...found.values()];
+  openDialog(`<h3 class="title" style="font-size:18px">從以前的旅程帶入</h3>
+    <p class="tiny faint" style="margin:0">只列出你負責的委託人。帶入後由你負責收錢${canRate(t) ? '，匯率要重新確認' : ''}。</p>
+    <div class="imp-list">${arr.map((c, i) => `<label class="imp"><input type="checkbox" data-imp="${i}" checked><span><b>${esc(c.name)}</b><span class="tiny faint">${esc(c.from)}${c.note ? '・' + esc(c.note) : ''}</span></span></label>`).join('')}</div>
+    <div class="sheet-acts" style="position:static"><button class="btn" id="iNo">取消</button><button class="btn pri" id="iOk">帶入</button></div>`, (d, close) => {
+    $('#iNo', d).addEventListener('click', close);
+    $('#iOk', d).addEventListener('click', () => {
+      const pick = $$('[data-imp]', d).filter(x => x.checked).map(x => arr[+x.dataset.imp]);
+      pick.forEach(c => write(setDoc(doc(collection(S.db, 'trips', t.id, 'clients')), { name: c.name, owner: me, note: c.note || '', rate: null, pays: [], createdBy: me, createdAt: serverTimestamp(), updatedBy: me, updatedAt: serverTimestamp() })));
+      close(); toast(pick.length ? `帶入了 ${pick.length} 位委託人` : '沒有選任何人');
+    });
+  });
+}
+// 委託人明細：未收（可以勾選記錄收款）、收款紀錄、對帳
+function clientSheet(ctx, t, cid) {
+  const { S } = ctx, me = S.user.uid;
+  const paint = s => {
+    const c = clientsOf(t).find(x => x.id === cid); if (!c) { closeSheet(); return; }
+    const list = cache[t.id]?.list || [], st = clientState(t, list, c), sel = new Set(st.unpaid.map(i => i.key));
+    const line = i => `${i.e.date ? dayLabel(i.e.date) + ' ' : ''}${i.x.name || i.e.name}　${money(i.amt, i.e.cur)}`;
+    const copyTxt = () => `${c.name} 的代購（${t.name}）\n` + st.unpaid.map(line).join('\n') + `\n合計 ${dueOf(t, st.unpaid, c).text}${Number(c.rate) > 0 && canRate(t) ? `\n（匯率 1 ${t.currency} ＝ ${c.rate} ${t.settleCurrency}）` : ''}`;
+    s.innerHTML = `<div class="sheet-h"><h3 class="title">${esc(c.name)}</h3><button class="iconbtn" data-close aria-label="關閉">✕</button></div>
+      <div class="small muted cl-meta">${av(t, c.owner, 'xs')} ${esc(nm(t, c.owner))} 負責收錢${c.note ? `・${esc(c.note)}` : ''}
+        ${canRate(t) ? `・${Number(c.rate) > 0 ? `匯率 1 ${esc(t.currency)} ＝ ${esc(String(c.rate))} ${esc(t.settleCurrency)}` : '沒設匯率'}` : ''}
+        <button type="button" class="linkbtn" id="cEdit">編輯</button></div>
+      <section class="card" style="gap:10px">
+        <div class="row" style="justify-content:space-between;gap:8px"><b>${st.unpaid.length ? '還沒收' : st.all.length ? '都收齊了 🎉' : '還沒有代購'}</b>${st.unpaid.length ? `<b class="num" style="text-align:right">${dueOf(t, st.unpaid, c).text}</b>` : ''}</div>
+        ${st.unpaid.length ? `<div class="px-items">${st.unpaid.map(i => `<label class="px-item"><input type="checkbox" data-pk="${esc(i.key)}" checked>
+          <span class="tiny faint">${i.e.date ? dayLabel(i.e.date) : ''}</span><span class="small">${esc(i.x.name || i.e.name)}</span><span class="num small">${money(i.amt, i.e.cur)}</span></label>`).join('')}</div>
+          <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn pri" id="cPay" style="flex:1">記錄收款</button><button class="btn" id="cCopy">${ic.copy}複製對帳</button></div>
+          <span class="tiny faint" id="cSel"></span>` : st.all.length ? '' : '<p class="small muted" style="margin:0">記帳時在代購選這位委託人，就會出現在這裡。</p>'}
+      </section>
+      ${st.pays.length ? `<section class="card" style="gap:10px"><b>收款紀錄</b>${st.pays.slice().sort((a, b) => b.at - a.at).map(p => {
+        const its = st.all.filter(i => (p.keys || []).includes(i.key));
+        return `<div class="pay"><div class="row" style="justify-content:space-between;gap:8px"><span class="small"><b class="num">${esc(p.text || '')}</b></span><button type="button" class="linkbtn" data-unpay="${esc(p.id)}" style="color:var(--danger)">取消</button></div>
+          <span class="tiny faint">${new Date(p.at).toLocaleDateString('zh-TW')}・${esc(nm(t, p.by))} 記錄・${its.length} 件${(p.keys || []).length > its.length ? `（${(p.keys || []).length - its.length} 件的記帳已刪除）` : ''}</span>
+          <span class="tiny muted">${its.map(i => esc(i.x.name || i.e.name)).join('、')}</span></div>`;
+      }).join('')}</section>` : ''}
+      ${!st.all.length ? `<button class="btn danger" id="cDel">刪除這位委託人</button>` : ''}`;
+    const selLine = () => { const its = st.unpaid.filter(i => sel.has(i.key)); const el = $('#cSel', s); if (el) el.textContent = `勾選 ${its.length} 件，共 ${dueOf(t, its, c).text}`; $('#cPay', s) && ($('#cPay', s).disabled = !its.length); };
+    selLine();
+    $$('[data-pk]', s).forEach(x => x.addEventListener('change', () => { x.checked ? sel.add(x.dataset.pk) : sel.delete(x.dataset.pk); selLine(); }));
+    $('#cEdit', s).addEventListener('click', () => clientDialog(ctx, t, c).then(() => setTimeout(() => paint(s), 50)));
+    $('#cCopy', s)?.addEventListener('click', () => copyText(copyTxt()).then(() => toast('已複製對帳內容')));
+    $('#cPay', s)?.addEventListener('click', () => {
+      const its = st.unpaid.filter(i => sel.has(i.key)); if (!its.length) return;
+      const d = dueOf(t, its, c);
+      if (!confirm(`記錄 ${c.name} 付了 ${d.text}？`)) return;
+      const p = { id: rk(), at: Date.now(), by: me, keys: its.map(i => i.key), text: d.short };
+      write(updateDoc(doc(S.db, 'trips', t.id, 'clients', c.id), { pays: arrayUnion(p), updatedBy: me, updatedAt: serverTimestamp() }));
+      const cc = clientsOf(t).find(x => x.id === c.id); if (cc) cc.pays = [...(cc.pays || []), p];
+      toast('已記錄收款'); paint(s);
+    });
+    $$('[data-unpay]', s).forEach(b => b.addEventListener('click', () => {
+      const p = st.pays.find(x => x.id === b.dataset.unpay); if (!p || !confirm('取消這筆收款紀錄？那些代購會回到「還沒收」。')) return;
+      write(updateDoc(doc(S.db, 'trips', t.id, 'clients', c.id), { pays: arrayRemove(p), updatedBy: me, updatedAt: serverTimestamp() }));
+      const cc = clientsOf(t).find(x => x.id === c.id); if (cc) cc.pays = (cc.pays || []).filter(x => x.id !== p.id);
+      paint(s);
+    }));
+    $('#cDel', s)?.addEventListener('click', () => { if (!confirm(`刪除委託人「${c.name}」？`)) return; write(deleteDoc(doc(S.db, 'trips', t.id, 'clients', c.id))); const cc = cache[t.id]; if (cc) cc.clients = cc.clients.filter(x => x.id !== c.id); closeSheet(); toast('已刪除'); });
+  };
+  openSheet('', s => paint(s));
+}
+
+/* ───────── 代購分頁：依負責人列出委託人 ───────── */
+function proxyHTML(t, list, me) {
+  const cs = clientsOf(t), ms = mems(t);
+  // 還沒建檔的名字（舊資料手打的）
+  const loose = new Map();
+  for (const e of list) (e.proxy || []).forEach(x => { if (toC(x.amount) > 0 && !matchClient(cs, x)) { const k = `${x.owner}|${x.client || ''}`; loose.set(k, { owner: x.owner, name: x.client || '', n: (loose.get(k)?.n || 0) + 1 }); } });
+  const owners = orderOf(t, [...cs.map(c => c.owner), ...[...loose.values()].map(l => l.owner)]).filter(u => ms.includes(u) || cs.some(c => c.owner === u));
+  const head = `<p class="tiny faint" style="margin:0">幫不在這趟的朋友買的東西。成本算在負責人身上，不分給大家；負責人自己向委託人收錢。</p>
+    <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn pri" id="pxNew" style="flex:1">${ic.plus}新增委託人</button><button class="btn" id="pxImp">從以前的旅程帶入</button></div>`;
+  if (!cs.length && !loose.size) return head + '<div class="card empty"><p class="small muted" style="margin:0">還沒有委託人。先新增，記帳時就能直接選。</p></div>';
+  return head + owners.map(u => {
+    const mine = cs.filter(c => c.owner === u), lo = [...loose.values()].filter(l => l.owner === u);
+    if (!mine.length && !lo.length) return '';
+    const sts = mine.map(c => ({ c, st: clientState(t, list, c) }));
+    return `<section class="card" style="gap:10px"><div class="row">${av(t, u, 'sm')}<b>${esc(nm(t, u))} 負責</b></div>
+      ${sts.map(({ c, st }) => `<button type="button" class="cl-row" data-cl="${esc(c.id)}">
+        <span class="mn-main"><span class="mn-name">${esc(c.name)}</span><span class="tiny faint">${st.all.length} 件${st.paid.length ? `・已收 ${st.paid.length} 件` : ''}${c.note ? `・${esc(c.note)}` : ''}</span></span>
+        <span class="mn-amt">${st.unpaid.length ? `<b class="num">${esc(dueOf(t, st.unpaid, c).short)}</b><span class="tiny faint">還沒收</span>` : st.all.length ? '<span class="tag">✓ 收齊</span>' : '<span class="tiny faint">還沒有代購</span>'}</span></button>`).join('')}
+      ${lo.map(l => `<div class="cl-row loose"><span class="mn-main"><span class="mn-name">${esc(l.name || '（沒填委託人）')}</span><span class="tiny faint">${l.n} 件・還沒建檔</span></span>
+        ${l.name ? `<button type="button" class="pillbtn" data-adopt="${esc(u)}|${esc(l.name)}">建檔</button>` : ''}</div>`).join('')}
+    </section>`;
   }).join('');
 }
 
@@ -418,16 +582,14 @@ function editExpense(ctx, t, e) {
   let custom = !!(e?.shares && Object.keys(e.shares).length) && !e?.rcpt;
   const shareIn = {}; if (custom) for (const [u, v] of Object.entries(e.shares)) shareIn[u] = amtStr(v);
   // 照收據逐筆填：有 rcpt 的舊記帳直接打開
-  let rc = e?.rcpt ? { ex: !!e.rcpt.ex, rate: e.rcpt.rate ?? 10, low: e.rcpt.low ?? 8, items: e.rcpt.items.map(x => ({ ...x, price: amtStr(x.price), who: { ...(x.who || {}) }, px: x.px ? { ...x.px } : null })) } : null;
-  let proxy = rc ? [] : (e?.proxy || []).map(x => ({ ...x, amount: amtStr(x.amount) }));
+  let rc = e?.rcpt ? { ex: !!e.rcpt.ex, rate: e.rcpt.rate ?? 10, low: e.rcpt.low ?? 8, items: e.rcpt.items.map(x => ({ ...x, k: x.k || rk(), price: amtStr(x.price), who: { ...(x.who || {}) }, px: x.px ? { ...x.px, cid: x.px.cid || matchClient(clientsOf(t), x.px)?.id || null } : null })) } : null;
+  let proxy = rc ? [] : (e?.proxy || []).map(x => ({ ...x, k: x.k || rk(), cid: x.cid || matchClient(clientsOf(t), x)?.id || null, amount: amtStr(x.amount) }));
   let refund = e?.refund ? { actual: amtStr(e.refund.actual), who: e.refund.who, settled: [...(e.refund.settled || [])] } : null;
   let settled = [...(e?.settled || [])];
   let cat = e?.cat || (isNew ? localGet('mncat:' + t.id) : '') || 'food';
   const moreOpen = !!(proxy.length || refund || settled.length || e?.note);
   const memBtn = (attr, u, on) => `<button type="button" class="mem" data-${attr}="${esc(u)}" aria-pressed="${on}">${av(t, u, 'sm')}<span>${esc(nm(t, u))}</span></button>`;
   const allPeople = orderOf(t, [...payers, ...split]);
-  // 這趟出現過的委託人（代購時可以直接選）
-  const clients = [...new Set((cache[t.id]?.list || []).flatMap(x => [...(x.proxy || []).map(p => p.client), ...(x.rcpt?.items || []).map(i => i.px?.client)]).filter(Boolean))];
 
   openSheet(`<div class="sheet-h"><h3 class="title">${isNew ? '記一筆' : '編輯記帳'}</h3><button class="iconbtn" data-close aria-label="關閉">✕</button></div>
     <div id="eLock"></div>
@@ -454,7 +616,6 @@ function editExpense(ctx, t, e) {
         ${solo ? '' : '<div class="field" id="eHowWrap"><span>這筆怎麼還</span><div id="eHow"></div></div>'}
         <label class="field"><span>備註（選填）</span><textarea class="input" id="eNote" rows="2" maxlength="500">${esc(e?.note || '')}</textarea></label>
       </div></details>
-    <datalist id="eClients">${clients.map(c => `<option value="${esc(c)}">`).join('')}</datalist>
     <p class="small" id="eErr" style="margin:0;color:var(--danger)"></p>
     <div class="sheet-acts">${isNew || locked0 ? '' : '<button class="btn danger" id="eDel">刪除</button>'}<button class="btn pri" id="eSave">儲存</button></div>`, s => {
     const A = () => { const v = evalAmt($('#eAmt', s).value); return v == null || isNaN(v) ? NaN : toC(v); };
@@ -473,7 +634,7 @@ function editExpense(ctx, t, e) {
         d.proxy = R.proxy;
       } else {
         if (custom) d.shares = Object.fromEntries(split.map(u => [u, evalAmt(shareIn[u]) || 0]));
-        d.proxy = proxy.filter(x => (x.owner || solo) && evalAmt(x.amount) > 0).map(x => ({ owner: solo ? me : x.owner, client: x.client || '', name: x.name || '', amount: evalAmt(x.amount) }));
+        d.proxy = proxy.filter(x => (x.owner || solo) && evalAmt(x.amount) > 0).map(x => ({ owner: solo ? me : x.owner, cid: x.cid || null, client: x.client || '', name: x.name || '', amount: evalAmt(x.amount), k: x.k || rk() }));
       }
       if (refund && evalAmt(refund.actual) > 0 && refund.who) d.refund = { actual: evalAmt(refund.actual), who: refund.who, settled: refund.settled };
       d.settled = settled; return d;
@@ -529,17 +690,31 @@ function editExpense(ctx, t, e) {
         $('#eEven', box).addEventListener('click', () => { custom = false; paintShare(); paintHow(); });
       }
     };
+    // 委託人選單：依負責人分組；最後一項新增
+    const cliSel = (attrs, o) => {
+      const cs = clientsOf(t), v = o.cid || (o.client ? '__legacy' : '');
+      return `<select class="input" ${attrs} aria-label="委託人"><option value="" ${v ? '' : 'selected'}>選委託人…</option>
+        ${ms.map(u => { const g = cs.filter(c => c.owner === u); return g.length ? `<optgroup label="${esc(nm(t, u))} 負責">${g.map(c => `<option value="${esc(c.id)}" ${v === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</optgroup>` : ''; }).join('')}
+        ${v === '__legacy' ? `<option value="__legacy" selected>${esc(o.client)}（還沒建檔）</option>` : ''}
+        <option value="__new">＋ 新增委託人</option></select>`;
+    };
+    const pickClient = (o, val, done) => {
+      const set = c => { o.cid = c.id; o.client = c.name; o.owner = c.owner; };
+      if (val === '__new') { clientDialog(ctx, t, null, payers[0] || me).then(id => { const c = id && clientsOf(t).find(x => x.id === id); if (c) set(c); done(); }); return; }
+      if (val === '__legacy') return;
+      if (!val) { o.cid = null; o.client = ''; done(); return; }
+      const c = clientsOf(t).find(x => x.id === val); if (c) set(c); done();
+    };
     const paintPx = () => {
       const box = $('#ePx', s);
       $('#ePxWrap', s).classList.toggle('hidden', !!rc);
       if (rc) return;
       box.innerHTML = proxy.map((x, i) => `<div class="px-line">
-        <div class="grid2">${solo ? '' : `<label class="field"><span class="tiny">負責人</span><select class="input" data-px="${i}" data-k="owner">${ms.map(u => `<option value="${esc(u)}" ${x.owner === u ? 'selected' : ''}>${esc(nm(t, u))}</option>`).join('')}</select></label>`}
-          <label class="field"><span class="tiny">委託人</span><input class="input" data-px="${i}" data-k="client" maxlength="30" list="eClients" value="${esc(x.client || '')}" placeholder="例如：小美"></label>
-          ${solo ? `<label class="field"><span class="tiny">金額</span><input class="input num" data-px="${i}" data-k="amount" inputmode="decimal" value="${esc(x.amount || '')}" placeholder="0"></label>` : ''}</div>
-        <div class="grid2"><label class="field"><span class="tiny">品名（選填）</span><input class="input" data-px="${i}" data-k="name" maxlength="60" value="${esc(x.name || '')}"></label>
-          ${solo ? '' : `<label class="field"><span class="tiny">金額</span><input class="input num" data-px="${i}" data-k="amount" inputmode="decimal" value="${esc(x.amount || '')}" placeholder="0"></label>`}</div>
-        <button type="button" class="linkbtn" data-pxdel="${i}" style="align-self:flex-end">移除這件</button></div>`).join('')
+        <div class="grid2"><label class="field"><span class="tiny">委託人</span>${cliSel(`data-pxc="${i}"`, x)}</label>
+          <label class="field"><span class="tiny">金額</span><input class="input num" data-px="${i}" data-k="amount" inputmode="decimal" value="${esc(x.amount || '')}" placeholder="0"></label></div>
+        <label class="field"><span class="tiny">品名（選填）</span><input class="input" data-px="${i}" data-k="name" maxlength="60" value="${esc(x.name || '')}"></label>
+        <div class="row" style="justify-content:space-between">${!solo && (x.cid || x.client) ? `<span class="tiny faint row" style="gap:4px">${av(t, x.owner)}${esc(nm(t, x.owner))} 負責收錢</span>` : '<span></span>'}
+          <button type="button" class="linkbtn" data-pxdel="${i}">移除這件</button></div></div>`).join('')
         + (proxy.length ? `<span class="tiny faint" id="ePxSum"></span>` : '');
       const sumLine = () => { const el = $('#ePxSum', box); if (el) el.textContent = `代購合計 ${money(pxTotal(), cur)}，${solo ? '不算在自己的花費裡。' : '算在負責人身上，剩下的才分給大家。'}`; };
       sumLine();
@@ -548,9 +723,10 @@ function editExpense(ctx, t, e) {
         if (i.dataset.k === 'amount') { sumLine(); paintShare(); paintHow(); }
       }));
       $$('[data-pxdel]', box).forEach(b => b.addEventListener('click', () => { proxy.splice(+b.dataset.pxdel, 1); paintPx(); paintShare(); paintHow(); paintLock(); }));
+      $$('[data-pxc]', box).forEach(sel => sel.addEventListener('change', () => pickClient(proxy[+sel.dataset.pxc], sel.value, () => { paintPx(); paintShare(); paintHow(); paintLock(); $(`[data-pxc="${sel.dataset.pxc}"]`, box)?.focus(); })));
     };
     /* ── 照收據逐筆填 ── */
-    const newLine = () => { const prev = rc.items[rc.items.length - 1]; return { name: '', price: '', who: prev && !prev.px ? { ...prev.who } : solo ? { [me]: 1 } : {}, px: prev?.px ? { ...prev.px } : null, low: false, noDisc: false }; };
+    const newLine = () => { const prev = rc.items[rc.items.length - 1]; return { k: rk(), name: '', price: '', who: prev && !prev.px ? { ...prev.who } : solo ? { [me]: 1 } : {}, px: prev?.px ? { ...prev.px } : null, low: false, noDisc: false }; };
     const paintRc = () => {
       const box = $('#eRcWrap', s), tg = $('#eRcToggle', s);
       tg.innerHTML = rc ? '改回不分品項' : `🧾 照收據逐筆填<span class="tiny">一張收據很多人買、有代購時用：每行點一下是誰的，折扣和稅自動照比例分</span>`;
@@ -571,8 +747,7 @@ function editExpense(ctx, t, e) {
             <div class="rc-who">${people.map(u => `<button type="button" class="rc-chip" data-rw="${i}:${esc(u)}" aria-pressed="${!x.px && x.who?.[u] > 0}" style="--c:${esc(t.members[u].color || '#999')}">${av(t, u, 'xs')}${esc(nm(t, u))}</button>`).join('')}
               <button type="button" class="rc-chip" data-rpx="${i}" aria-pressed="${!!x.px}">🛍️ 代購</button></div>
             ${multi ? `<div class="rc-qty"><span class="tiny faint">幾份</span>${Object.keys(x.who).filter(u => x.who[u] > 0).map(u => `<label class="tiny row" style="gap:4px">${esc(nm(t, u))}<input class="input num" data-rq="${i}:${esc(u)}" inputmode="numeric" value="${x.who[u]}" aria-label="${esc(nm(t, u))} 幾份"></label>`).join('')}</div>` : ''}
-            ${x.px ? `<div class="grid2">${solo ? '' : `<select class="input" data-ri="${i}" data-k="owner" aria-label="代購負責人">${people.map(u => `<option value="${esc(u)}" ${x.px.owner === u ? 'selected' : ''}>${esc(nm(t, u))} 負責</option>`).join('')}</select>`}
-              <input class="input" data-ri="${i}" data-k="client" list="eClients" maxlength="30" value="${esc(x.px.client || '')}" placeholder="委託人（例如：小美）" aria-label="委託人"></div>` : ''}
+            ${x.px ? `<div class="row" style="gap:8px">${cliSel(`data-rcl="${i}"`, x.px)}${!solo && (x.px.cid || x.px.client) ? `<span class="tiny faint nowrap">${esc(nm(t, x.px.owner))} 負責</span>` : ''}</div>` : ''}
             ${x.open ? `<div class="rc-opts">${rc.ex ? `<label class="row tiny" style="gap:6px"><input type="checkbox" data-rflag="${i}:low" ${x.low ? 'checked' : ''}> 用減免稅率（${esc(String(rc.low))}%）</label>` : ''}
               <label class="row tiny" style="gap:6px"><input type="checkbox" data-rflag="${i}:noDisc" ${x.noDisc ? 'checked' : ''}> 不參加折扣（優惠券沒折到這件）</label>
               <button type="button" class="linkbtn" data-rdel="${i}" style="align-self:flex-start;color:var(--danger)">刪除這行</button></div>` : ''}
@@ -580,7 +755,8 @@ function editExpense(ctx, t, e) {
         }).join('')}</div>
         <button type="button" class="btn" id="rcAdd">${ic.plus}加一行</button>
         <div id="rcSum"></div></section>`;
-      const upd = (i, k, v) => { const x = rc.items[i]; if (k === 'owner' || k === 'client') x.px[k] = v; else x[k] = v; };
+      const upd = (i, k, v) => { rc.items[i][k] = v; };
+      $$('[data-rcl]', box).forEach(sel => sel.addEventListener('change', () => pickClient(rc.items[+sel.dataset.rcl].px, sel.value, () => { paintRc(); $(`[data-rcl="${sel.dataset.rcl}"]`, box)?.focus(); })));
       $$('[data-ri]', box).forEach(el => el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', () => { upd(+el.dataset.ri, el.dataset.k, el.value); paintRcSum(); }));
       $$('[data-rw]', box).forEach(b => b.addEventListener('click', () => {
         const [i, u] = b.dataset.rw.split(':'), x = rc.items[+i];
@@ -590,7 +766,7 @@ function editExpense(ctx, t, e) {
       }));
       $$('[data-rpx]', box).forEach(b => b.addEventListener('click', () => {
         const x = rc.items[+b.dataset.rpx];
-        x.px = x.px ? null : { owner: payers[0] || me, client: clients[0] || '' }; if (x.px) x.who = {};
+        x.px = x.px ? null : { owner: payers[0] || me, cid: null, client: '' }; if (x.px) x.who = {};
         paintRc(); $(`[data-rpx="${b.dataset.rpx}"]`, box)?.focus();
       }));
       $$('[data-rq]', box).forEach(el => el.addEventListener('input', () => { const [i, u] = el.dataset.rq.split(':'); const q = Math.max(0, Math.round(Number(el.value) || 0)); rc.items[+i].who[u] = q || 1; paintRcSum(); }));
@@ -680,7 +856,7 @@ function editExpense(ctx, t, e) {
       $$('[data-split]', s).forEach(y => y.setAttribute('aria-pressed', String(split.includes(y.dataset.split))));
       paintShare(); paintHow();
     }));
-    $('#ePxAdd', s).addEventListener('click', () => { proxy.push({ owner: payers[0] || me, client: clients[0] || '', name: '', amount: '' }); paintPx(); paintLock(); $$('[data-k="client"]', $('#ePx', s)).pop()?.focus(); });
+    $('#ePxAdd', s).addEventListener('click', () => { proxy.push({ k: rk(), owner: payers[0] || me, cid: null, client: '', name: '', amount: '' }); paintPx(); paintLock(); $$('[data-pxc]', $('#ePx', s)).pop()?.focus(); });
     $('#eRf', s).addEventListener('change', ev => { refund = ev.target.checked ? { actual: '', who: payers[0] || me, settled: [] } : null; paintRf(); paintHow(); paintLock(); });
     $('#eRcToggle', s).addEventListener('click', () => {
       if (rc) {
@@ -688,9 +864,9 @@ function editExpense(ctx, t, e) {
         rc = null;
       } else {
         // 一般代購移進收據，當作各自一行
-        rc = { ex: false, rate: cur === 'JPY' ? 10 : 10, low: cur === 'JPY' ? 8 : 5, items: proxy.filter(x => evalAmt(x.amount) > 0).map(x => ({ name: x.name || '', price: x.amount, who: {}, px: { owner: solo ? me : x.owner, client: x.client || '' }, low: false, noDisc: false })) };
+        rc = { ex: false, rate: cur === 'JPY' ? 10 : 10, low: cur === 'JPY' ? 8 : 5, items: proxy.filter(x => evalAmt(x.amount) > 0).map(x => ({ k: x.k || rk(), name: x.name || '', price: x.amount, who: {}, px: { owner: solo ? me : x.owner, cid: x.cid || null, client: x.client || '' }, low: false, noDisc: false })) };
         proxy = []; custom = false;
-        rc.items.push({ name: '', price: '', who: solo ? { [me]: 1 } : {}, px: null, low: false, noDisc: false });
+        rc.items.push({ k: rk(), name: '', price: '', who: solo ? { [me]: 1 } : {}, px: null, low: false, noDisc: false });
       }
       paintRc(); paintPx(); paintShare(); paintHow(); paintLock();
       if (rc) $('.rc-price', s)?.focus();
@@ -721,6 +897,7 @@ function editExpense(ctx, t, e) {
         d.rcpt = rcClean(rc);
       } else {
         if (!solo && !split.length) return err('「分給誰」至少選一個人');
+        if (proxy.some(x => evalAmt(x.amount) > 0 && !x.cid && !x.client)) return err('代購要選委託人');
         if (pxTotal() > a) return err('代購金額比總額還多');
         if (custom) { const tot = split.reduce((n, u) => n + toC(evalAmt(shareIn[u]) || 0), 0); if (tot !== a - pxTotal()) return err(`每人分攤的合計 ${money(tot, cur)}，應該是 ${money(a - pxTotal(), cur)}`); }
       }
