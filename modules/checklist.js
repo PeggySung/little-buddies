@@ -3,6 +3,7 @@ import { doc, collection, onSnapshot, setDoc, updateDoc, deleteDoc, deleteField,
 import { $, $$, esc, ic, toast, localGet, localSet } from './ui.js';
 import { avatarHTML } from './profile.js';
 import { openSheet, closeSheet } from './plan.js';
+import { countryBy } from './places.js';
 
 export const SCOPES = {
   all:    { label: '每個人', hint: '每個人都要自己完成' },
@@ -15,8 +16,8 @@ const CAT_ORDER = ['出發前要做', '證件與重要物品', '衣物與鞋子'
 // [分類, 項目, 範圍, 備註]；指定成員的項目匯入時先變成「有人帶就好」，再自己改
 const T = (cat, items) => items.map(([text, scope = 'all', note = '']) => ({ cat, text, scope, note }));
 export const TEMPLATES = {
-  abroad: { label: '出國基本', desc: '護照、入境申報、網路、外幣', items: [
-    ...T('出發前要做', [['確認護照效期（6 個月以上）和英文姓名'], ['線上入境申報（例如 Visit Japan Web）', 'all', '截圖入境 QR Code'], ['旅遊保險'], ['確認信用卡海外交易功能和額度'], ['手機漫遊、eSIM 或 Wi-Fi 分享器'], ['下載離線地圖、收藏景點'], ['查天氣和航班資訊']]),
+  abroad: { label: '出國基本', desc: '護照、入境手續、網路、外幣', items: [
+    ...T('出發前要做', [['確認護照效期（6 個月以上）和英文姓名'], ['旅遊保險'], ['確認信用卡海外交易功能和額度'], ['手機漫遊、eSIM 或 Wi-Fi 分享器'], ['下載離線地圖、收藏景點'], ['查天氣和航班資訊']]),
     ...T('證件與重要物品', [['護照（正本）'], ['信用卡'], ['少量當地現金'], ['旅遊保險資料和緊急聯絡方式'], ['機票、訂房資料（截圖或電子檔）']]),
     ...T('電子產品', [['手機和充電線'], ['行動電源'], ['轉接頭', 'claim'], ['耳機']]),
     ...T('出發當天最後確認', [['護照放進隨身包'], ['手機、行動電源充飽電'], ['確認航班和報到時間'], ['門窗、瓦斯、電器都關好']])
@@ -46,6 +47,48 @@ export const TEMPLATES = {
     ...T('日常小物', [['暖暖包'], ['護唇膏、乳液']])
   ] }
 };
+
+/* ───────── 各國入境手續（以台灣護照為準）───────── */
+// 規定常常變，備註都提醒出發前再到外交部領事事務局確認
+const SCHENGEN = ['FR', 'DE', 'IT', 'ES', 'NL', 'AT', 'CZ', 'CH'];
+const ENTRY = {
+  JP: ['填 Visit Japan Web（入境、海關申報）', '截圖入境 QR Code'],
+  KR: ['填韓國電子入境卡 e-Arrival', 'K-ETA 免申請到 2026/12/31，之後出發要再確認'],
+  TH: ['填泰國數位入境卡 TDAC', '抵達前 3 天內填寫'],
+  SG: ['填新加坡入境卡 SG Arrival Card', '抵達前 3 天內填寫'],
+  MY: ['填馬來西亞數位入境卡 MDAC', '抵達前 3 天內填寫'],
+  VN: ['申請越南電子簽證 e-Visa', '審核要幾天，提早申請'],
+  PH: ['填菲律賓 eTravel', '抵達前 72 小時內填寫；簽證規定也要確認'],
+  ID: ['申請印尼落地簽 e-VOA，填入境卡', '可以先在網路上申請'],
+  HK: ['申請香港預辦入境登記', '線上申請，免費'],
+  MO: ['確認澳門入境證件（台胞證或入境許可）'],
+  CN: ['確認台胞證效期'],
+  US: ['申請美國 ESTA', '要付費，最好出發前 3 天以上申請'],
+  CA: ['申請加拿大 eTA', '要付費，最好提早申請'],
+  GB: ['申請英國電子旅行許可 UK ETA', '要付費，最好提早申請'],
+  AU: ['申請澳洲 ETA（用官方 App）', '要付費，最好提早申請'],
+  NZ: ['申請紐西蘭 NZeTA', '要付費，最好提早申請；入境前也可以填旅客申報 NZTD'],
+  TR: ['申請土耳其電子簽證 e-Visa'],
+  EU: ['確認歐洲 ETIAS 旅行許可是否已經要申請', '申根區免簽，ETIAS 上路後要先線上申請']
+};
+const CHECK_NOTE = '出發前再確認最新規定';
+export function entryItems(t) {
+  const out = [], seen = new Set();
+  (t.places || []).forEach(p => {
+    if (!p.country || p.country === 'TW') return;
+    const key = SCHENGEN.includes(p.country) ? 'EU' : p.country;
+    if (seen.has(key)) return; seen.add(key);
+    const name = countryBy(p.country)?.name || p.countryName || '目的地';
+    const [text, note] = ENTRY[key] || [`確認${name}的入境規定和簽證`];
+    out.push({ cat: '出發前要做', text, scope: 'all', note: note ? `${note}。${CHECK_NOTE}` : CHECK_NOTE });
+  });
+  return out;
+}
+function templateItems(k, t) {
+  const items = TEMPLATES[k].items;
+  if (k !== 'abroad') return items;
+  return [items[0], ...entryItems(t), ...items.slice(1)];
+}
 
 /* ───────── 即時資料 ───────── */
 const cache = {};
@@ -94,16 +137,19 @@ export function renderChecklist(ctx, t) {
     return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
   });
   const pct = myItems.length ? Math.round(myDone / myItems.length * 100) : 0;
+  const bar = (p, label) => `<div class="bar" role="progressbar" aria-valuenow="${p}" aria-valuemin="0" aria-valuemax="100" aria-label="${esc(label)}"><i style="width:${p}%"></i></div>`;
+  const seg = `<div class="seg" role="group" aria-label="顯示">
+      <button type="button" data-view="mine" aria-pressed="${view === 'mine'}">我的（${myItems.length}）</button>
+      <button type="button" data-view="all" aria-pressed="${view === 'all'}">全部・團隊（${list.length}）</button>
+    </div>`;
+  const mineCard = `<section class="card" style="gap:8px">
+      <div class="row" style="justify-content:space-between"><b>我的進度</b><span class="num">${myDone} / ${myItems.length}</span></div>
+      ${bar(pct, '我的進度')}
+      <span class="tiny faint">只列出你要準備的項目，和還沒人認領的共用物品</span>
+    </section>`;
   host.innerHTML = `
     <div class="dayhead"><h2 class="title">準備清單</h2></div>
-    ${list.length ? `<section class="card" style="gap:8px">
-      <div class="row" style="justify-content:space-between"><b>我的進度</b><span class="num">${myDone} / ${myItems.length}</span></div>
-      <div class="bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="我的進度"><i style="width:${pct}%"></i></div>
-    </section>
-    <div class="seg" role="group" aria-label="顯示">
-      <button type="button" data-view="mine" aria-pressed="${view === 'mine'}">我的</button>
-      <button type="button" data-view="all" aria-pressed="${view === 'all'}">全部（${list.length}）</button>
-    </div>` : ''}
+    ${list.length ? seg + (view === 'mine' ? mineCard : teamCard(t, list, me, bar)) : ''}
     ${!list.length ? `<div class="card empty"><p class="small muted" style="margin:0">還沒有清單。可以從範本一次加入常用項目，再刪掉不需要的，或自己一項一項新增。</p>
         <button class="btn pri full" id="ckTpl">從範本加入</button></div>`
       : !shown.length ? '<div class="card empty"><p class="small muted" style="margin:0">你目前沒有要準備的項目。</p></div>'
@@ -136,6 +182,27 @@ export function renderChecklist(ctx, t) {
     renderChecklist(ctx, t);
   }));
   $$('[data-cedit]', host).forEach(b => b.addEventListener('click', () => editItem(ctx, t, list.find(i => i.id === b.dataset.cedit))));
+}
+function teamCard(t, list, me, bar) {
+  const ms = (t.memberUids || []).filter(u => t.members?.[u]);
+  const doneAll = list.filter(x => itemDone(t, x)).length;
+  const pAll = list.length ? Math.round(doneAll / list.length * 100) : 0;
+  const rows = ms.map(u => {
+    const xs = list.filter(x => people(t, x).includes(u));
+    const d = xs.filter(x => isDone(x, u)).length;
+    const p = xs.length ? Math.round(d / xs.length * 100) : 0;
+    const m = t.members[u];
+    return `<div class="tm-row">${avatarHTML(m, 'sm')}
+      <div class="tm-main"><div class="row" style="justify-content:space-between"><span class="small">${esc(m.nickname)}${u === me ? '<span class="faint">（你）</span>' : ''}</span>
+        <span class="num small">${xs.length ? `${d} / ${xs.length}` : '—'}</span></div>${bar(p, m.nickname + ' 的進度')}</div></div>`;
+  }).join('');
+  const unclaimed = list.filter(x => x.scope === 'claim' && !x.claimBy).length;
+  return `<section class="card" style="gap:12px">
+    <div class="row" style="justify-content:space-between"><b>團隊進度</b><span class="num">${doneAll} / ${list.length} 項完成</span></div>
+    ${bar(pAll, '團隊進度')}
+    <div class="tm-list">${rows}</div>
+    ${unclaimed ? `<span class="tiny muted">還有 ${unclaimed} 項共用物品沒人認領</span>` : ''}
+  </section>`;
 }
 const write = p => p.catch(e => toast('儲存失敗：' + (e?.code || e?.message)));
 
@@ -226,7 +293,7 @@ function chooseTemplates(ctx, t) {
   openSheet(`<div class="sheet-h"><h3 class="title">從範本加入</h3><button class="iconbtn" data-close aria-label="關閉">✕</button></div>
     <p class="small muted" style="margin:0">可以複選。已經有的項目不會重複加入，加入後可以再編輯或刪除。</p>
     <div class="tpl-list">${Object.entries(TEMPLATES).map(([k, v]) => {
-      const n = v.items.filter(i => !have.has(i.text)).length;
+      const n = templateItems(k, t).filter(i => !have.has(i.text)).length;
       return `<button type="button" class="tpl" data-tpl="${k}" aria-pressed="${pick.has(k)}" ${n ? '' : 'disabled'}>
         <b>${v.label}</b><span class="tiny muted">${v.desc}</span><span class="tiny faint">${n ? `${n} 項` : '都已加入'}</span></button>`;
     }).join('')}</div>
@@ -235,7 +302,7 @@ function chooseTemplates(ctx, t) {
     $('#tAdd', s).addEventListener('click', () => {
       const seen = new Set(have);
       const items = [];
-      [...pick].forEach(k => TEMPLATES[k].items.forEach(i => { if (!seen.has(i.text)) { seen.add(i.text); items.push(i); } }));
+      [...pick].forEach(k => templateItems(k, t).forEach(i => { if (!seen.has(i.text)) { seen.add(i.text); items.push(i); } }));
       if (!items.length) { toast('沒有新的項目可以加入'); return; }
       const solo = (t.memberUids || []).length <= 1;
       const batch = writeBatch(S.db);
