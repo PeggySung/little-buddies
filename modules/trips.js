@@ -66,14 +66,33 @@ export function makeSync(ctx) {
 }
 
 /* ───────── 小元件 ───────── */
+/* 郵票字寬：中日韓字＝1，英數約 0.55（以字級 em 計） */
+function textEm(str) {
+  let u = 0;
+  for (const ch of str) u += /[\u2E80-\uFFFF]/.test(ch) ? 1 : /[A-Z0-9]/.test(ch) ? 0.64 : /\s/.test(ch) ? 0.3 : 0.58;
+  return u;
+}
+/* 地名排版：一行放得下就縮字；太長就兩行；再太長改用國名 */
+function fitLabel(label, fallback) {
+  const W = 0.68;                         // 郵票中間可用寬度（佔直徑比例）
+  const u = textEm(label);
+  if (!u) return { text: '', fs: 0.22, two: false };
+  if (u * 0.22 <= W) return { text: label, fs: 0.22, two: false };
+  if (u * 0.125 <= W) return { text: label, fs: +(W / u).toFixed(3), two: false };
+  if (u * 0.115 <= W * 2 - 0.08) return { text: label, fs: 0.115, two: true };
+  if (fallback && fallback !== label) return fitLabel(fallback, '');
+  return { text: label, fs: 0.115, two: true, clip: true };
+}
 function stampHTML(t, size = 72, rot = -9) {
   const p = (t.places || [])[0] || {};
   const c = countryBy(p.country);
-  const en = c ? c.en : (p.countryName || '').toUpperCase();
-  const label = p.city || (c ? c.name : p.countryName) || '';
+  const en = (c ? c.en : (p.countryName || '')).toUpperCase().slice(0, 22);
+  const cname = (c ? c.name : p.countryName) || '';
+  const L = fitLabel((p.city || cname || '').trim(), cname);
+  const enFs = Math.max(0.07, Math.min(0.12, 0.6 / Math.max(1, textEm(en) * 0.95)));
   const ym = (t.start || '').slice(0, 7).replace('-', '.');
   return `<div class="stamp" style="--s:${size}px;transform:rotate(${rot}deg)" aria-hidden="true"><div>
-    <b class="num">${esc(en.slice(0, 11))}</b><span class="title">${esc(label.slice(0, 4))}</span><i class="num">${esc(ym)}</i></div></div>`;
+    <b class="num" style="font-size:calc(var(--s) * ${enFs.toFixed(3)})">${esc(en)}</b><span class="title${L.two ? ' two' : ''}" style="font-size:calc(var(--s) * ${L.fs})">${esc(L.text)}</span><i class="num">${esc(ym)}</i></div></div>`;
 }
 function avatarsRow(t, max = 6) {
   const ms = Object.values(t.members || {}).sort((a, b) => (a.joinedAt || 0) - (b.joinedAt || 0));
@@ -168,8 +187,8 @@ export function renderTripForm(ctx, tripId) {
           <select class="input" data-pc="${i}" aria-label="第 ${i + 1} 個目的地的國家">
             ${COUNTRIES.map(c => `<option value="${c.code}" ${p.country === c.code ? 'selected' : ''}>${c.name}</option>`).join('')}
             <option value="${OTHER}" ${p.country === OTHER ? 'selected' : ''}>其他國家</option></select>
-          ${p.country === OTHER ? `<input class="input" data-pn="${i}" maxlength="20" value="${esc(p.countryName || '')}" placeholder="國家" aria-label="國家名稱">` : ''}
-          <input class="input" data-pcity="${i}" maxlength="20" value="${esc(p.city || '')}" placeholder="城市／地區（選填）" aria-label="第 ${i + 1} 個目的地的城市">
+          ${p.country === OTHER ? `<input class="input" data-pn="${i}" maxlength="40" value="${esc(p.countryName || '')}" placeholder="國家" aria-label="國家名稱">` : ''}
+          <input class="input" data-pcity="${i}" maxlength="60" value="${esc(p.city || '')}" placeholder="城市／地區（選填）" aria-label="第 ${i + 1} 個目的地的城市">
           ${f.places.length > 1 ? `<button type="button" class="iconbtn" data-prm="${i}" aria-label="移除這個目的地">✕</button>` : ''}
         </div>`).join('')}
         <button type="button" class="btn" id="addPlace">${ic.plus}再加一個目的地</button>

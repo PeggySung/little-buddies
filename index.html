@@ -95,8 +95,9 @@ h1, h2, h3 { margin: 0; font-weight: 400; }
 .trip-top { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
 .stamp { --s: 72px; width: var(--s); height: var(--s); flex-shrink: 0; border-radius: 50%; border: 2px solid var(--stamp); color: var(--stamp); padding: calc(var(--s) * .055); box-sizing: border-box; opacity: .92; }
 .stamp > div { width: 100%; height: 100%; border-radius: 50%; border: 1px dashed var(--stamp); display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; }
-.stamp b { font-size: calc(var(--s) * .12); letter-spacing: 1px; line-height: 1.2; }
-.stamp span { font-size: calc(var(--s) * .22); line-height: 1.15; white-space: nowrap; }
+.stamp b { font-size: calc(var(--s) * .12); letter-spacing: .06em; line-height: 1.2; white-space: nowrap; max-width: 86%; overflow: hidden; }
+.stamp span { font-size: calc(var(--s) * .22); line-height: 1.15; white-space: nowrap; max-width: 78%; text-align: center; }
+.stamp span.two { white-space: normal; word-break: break-word; overflow-wrap: anywhere; line-height: 1.1; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; margin: 1px 0; }
 .stamp i { font-style: normal; font-size: calc(var(--s) * .12); font-weight: 700; }
 .stamps { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding-top: 4px; }
 .stamp-empty { width: 64px; height: 64px; border-radius: 50%; border: 1.5px dashed var(--line2); display: flex; align-items: center; justify-content: center; }

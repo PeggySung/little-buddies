@@ -209,7 +209,7 @@ function editBooking(ctx, t, b, type) {
   if (type === 'flight') body = `
     <div class="grid2">${F('bAirline', '航空公司', b.airline, 'maxlength="40" placeholder="例如 華航"')}${F('bNo', '航班編號', b.no, 'maxlength="12" placeholder="例如 CI120" autocapitalize="characters"')}</div>
     <div class="grid2">${F('bFrom', '出發機場代碼', b.from, 'maxlength="4" placeholder="TPE" autocapitalize="characters"')}${F('bTo', '抵達機場代碼', b.to, 'maxlength="4" placeholder="OKA" autocapitalize="characters"')}</div>
-    <div class="grid2">${F('bFromName', '出發城市（選填）', b.fromName, 'maxlength="20" placeholder="桃園"')}${F('bToName', '抵達城市（選填）', b.toName, 'maxlength="20" placeholder="那霸"')}</div>
+    <div class="grid2">${F('bFromName', '出發城市（選填）', b.fromName, 'maxlength="40" placeholder="桃園"')}${F('bToName', '抵達城市（選填）', b.toName, 'maxlength="40" placeholder="那霸"')}</div>
     <div class="grid2">${D('bDepDate', '起飛日期', b.depDate)}${T('bDepTime', '起飛時間（當地）', b.depTime)}</div>
     <div class="grid2">${D('bArrDate', '抵達日期', b.arrDate)}${T('bArrTime', '抵達時間（當地）', b.arrTime)}</div>
     <div class="grid2">${tzSel('bDepTz', '出發地時區', b.depTz)}${tzSel('bArrTz', '抵達地時區', b.arrTz)}</div>
@@ -220,7 +220,7 @@ function editBooking(ctx, t, b, type) {
     <div class="field"><span id="lblMode">交通工具</span><div class="seg" role="group" aria-labelledby="lblMode">
       <button type="button" data-mode="train" aria-pressed="${b.mode !== 'bus'}">火車／捷運</button><button type="button" data-mode="bus" aria-pressed="${b.mode === 'bus'}">巴士</button></div></div>
     ${F('bNo', '車次／路線（選填）', b.no, 'maxlength="30" placeholder="例如 新幹線 のぞみ 15 號"')}
-    <div class="grid2">${F('bFrom', '出發站', b.from, 'maxlength="30"')}${F('bTo', '抵達站', b.to, 'maxlength="30"')}</div>
+    <div class="grid2">${F('bFrom', '出發站', b.from, 'maxlength="60"')}${F('bTo', '抵達站', b.to, 'maxlength="60"')}</div>
     <div class="grid2">${D('bDepDate', '出發日期', b.depDate)}${T('bDepTime', '出發時間', b.depTime)}</div>
     <div class="grid2">${D('bArrDate', '抵達日期（選填）', b.arrDate)}${T('bArrTime', '抵達時間（選填）', b.arrTime)}</div>
     ${F('bSeats', '座位（選填）', b.seats, 'maxlength="80" placeholder="例如 7 號車 12A–12D"')}`;
