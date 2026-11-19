@@ -217,6 +217,30 @@ details.more[open] summary::before { content: "－"; }
 .input.chipsel { width: auto; max-width: 13em; min-height: 36px; border-radius: 999px; padding: 0 30px 0 12px; font-size: 13px; font-weight: 700; background-color: var(--acc-soft); border-color: var(--acc); color: var(--sel-ink); background-position: right 10px center; text-overflow: ellipsis; }
 .input.chipsel.empty { background-color: var(--card); border-color: var(--danger); color: var(--danger); }
 .rc-hint { margin: 0; }
+.whobar { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 6px; scrollbar-width: none; }
+.whobar::-webkit-scrollbar { display: none; }
+.whobar button { flex-shrink: 0; min-height: 44px; display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px 4px 4px; border-radius: 999px; border: 1.5px solid var(--line2); background: var(--card); color: var(--ink2); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
+.whobar button[aria-pressed="true"] { background: var(--acc-soft); border-color: var(--acc); color: var(--sel-ink); }
+.sh-card { padding: 4px 14px; gap: 0; }
+.sh-row { display: flex; align-items: flex-start; gap: 10px; padding: 12px 0; border-top: 1.5px dashed var(--line); }
+.sh-row:first-child { border-top: 0; }
+.sh-row.done .sh-name { text-decoration: line-through; color: var(--ink3); }
+.sh-row.done .sh-th { opacity: .5; }
+.sh-row .ck-box:disabled { cursor: default; opacity: .6; }
+.sh-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; padding: 4px 0; border: 0; background: none; color: var(--ink); text-align: left; font: inherit; cursor: pointer; }
+div.sh-main { cursor: default; }
+.sh-name { font-weight: 700; overflow-wrap: anywhere; }
+.sh-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.sh-chips .chip { padding: 2px 9px; font-size: 11.5px; background: var(--sunk); color: var(--ink2); }
+.sh-chips .chip.px { background: var(--acc-soft); color: var(--sel-ink); }
+.sh-acts { display: flex; align-items: center; gap: 6px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; max-width: 46%; }
+.sh-th { width: 52px; height: 52px; padding: 0; border-radius: 10px; overflow: hidden; border: 1.5px solid var(--line); background: var(--sunk); cursor: zoom-in; }
+.sh-th img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.sh-tot { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 12px 0; border-top: 1.5px solid var(--line); font-size: 13px; color: var(--ink2); }
+.sh-big { display: flex; justify-content: center; background: var(--sunk); border-radius: 14px; overflow: hidden; }
+.sh-big img { max-width: 100%; max-height: 70dvh; object-fit: contain; display: block; }
+.sh-photo { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.sh-photo img { width: 96px; height: 96px; object-fit: cover; border-radius: 12px; border: 1.5px solid var(--line); }
 .brk { overflow-wrap: anywhere; min-width: 0; }
 .title { overflow-wrap: anywhere; }
 .stamps { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding-top: 4px; }

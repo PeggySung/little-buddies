@@ -8,6 +8,7 @@ import { stopAllItems, resetPlanUI, isBusy } from './modules/plan.js';
 import { stopAllBookings } from './modules/book.js';
 import { stopAllChecklist } from './modules/checklist.js';
 import { stopAllMoney } from './modules/money.js';
+import { stopAllShop } from './modules/shop.js';
 import { $, esc, ic, applyTheme, toggleTheme, isDark, copyText } from './modules/ui.js';
 import { CORE } from './modules/color.js';
 import { renderOnboarding, renderProfile, renderEdit, renderQuizRedo, avatarHTML } from './modules/profile.js';
@@ -132,7 +133,7 @@ function afterOnboard() {
   location.hash = code ? `#/join/${code}` : '#/';
   render();
 }
-const ctx = { S, render, topBar, bindTop, brand, afterOnboard, inviteCode: () => pendingJoin.get(), signOut: () => { stopTrips(); stopAllItems(); stopAllBookings(); stopAllChecklist(); stopAllMoney(); return signOut(auth); }, setProfile: p => { S.profile = p; } };
+const ctx = { S, render, topBar, bindTop, brand, afterOnboard, inviteCode: () => pendingJoin.get(), signOut: () => { stopTrips(); stopAllItems(); stopAllBookings(); stopAllChecklist(); stopAllMoney(); stopAllShop(); return signOut(auth); }, setProfile: p => { S.profile = p; } };
 ctx.afterProfileSave = makeSync(ctx);
 window.addEventListener('hashchange', () => { resetPlanUI(); render(); });
 

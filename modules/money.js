@@ -242,7 +242,7 @@ export function watchMoney(ctx, tripId, onChange) {
   }
   return () => c.listeners.delete(onChange);
 }
-export function stopAllMoney() { Object.values(cache).forEach(c => c.unsubs.forEach(u => u())); Object.keys(cache).forEach(k => delete cache[k]); }
+export function stopAllMoney() { Object.values(cache).forEach(c => c.unsubs.forEach(u => u())); Object.keys(cache).forEach(k => delete cache[k]); Object.keys(keep).forEach(k => delete keep[k]); }
 const isLocked = (tripId, cur) => !!cache[tripId]?.settle?.[cur]?.locked;
 const write = p => p.catch(e => toast(e?.code === 'permission-denied' ? '存不進去：這個幣別可能剛被鎖定，請重新整理' : '儲存失敗：' + (e?.code || e?.message)));
 
@@ -396,8 +396,8 @@ async function setPaid(ctx, t, key, btn) {
 /* ───────── 委託人（每趟旅程一份；和成員結算無關）─────────
    trips/{id}/clients/{cid}：{name, owner 負責收錢的成員, note, rate 代購匯率（1 當地幣 ＝ ? 結算幣）, pays 收款紀錄}
    代購項目（expense.proxy[]）用 cid 對到委託人；舊資料沒有 cid 的，照「名字＋負責人」對 */
-const clientsOf = t => cache[t.id]?.clients || [];
-const rk = () => Math.random().toString(36).slice(2, 8);
+export const clientsOf = t => cache[t.id]?.clients || [];
+export const rk = () => Math.random().toString(36).slice(2, 8);
 const pxKey = (e, x, i) => `${e.id}:${x.k || '#' + i}`;
 const matchClient = (cs, x) => x.cid ? cs.find(c => c.id === x.cid) : cs.find(c => c.name === x.client && c.owner === x.owner);
 // 某位委託人的代購項目（照付款日期）、未收／已收
@@ -432,7 +432,7 @@ function openDialog(html, onOpen) {
   return close;
 }
 // 新增／編輯委託人。回傳 Promise<委託人 id 或 null>
-function clientDialog(ctx, t, c = null, ownerDef = null) {
+export function clientDialog(ctx, t, c = null, ownerDef = null) {
   const { S } = ctx, me = S.user.uid, ms = mems(t);
   let owner = c?.owner || ownerDef || me;
   return new Promise(res => {
@@ -568,37 +568,37 @@ function proxyHTML(t, list, me) {
 }
 
 /* ───────── 記一筆／編輯 ───────── */
-function editExpense(ctx, t, e) {
+function editExpense(ctx, t, e, pre = null) {
   const { S } = ctx, me = S.user.uid, isNew = !e, ms = mems(t), solo = ms.length <= 1;
   const curOpts = [...new Set([t.currency, t.settleCurrency, e?.cur].filter(Boolean))];
-  let cur = e?.cur || localGet('mncur:' + t.id) || t.currency || 'TWD';
+  let cur = e?.cur || pre?.cur || localGet('mncur:' + t.id) || t.currency || 'TWD';
   const locked0 = !isNew && isLocked(t.id, e.cur);
   const amtStr = v => v == null ? '' : String(v);
   // 付款人、分攤
   let payers = e ? (e.paid && Object.keys(e.paid).length ? Object.keys(e.paid) : [e.payer]).filter(Boolean) : [me];
   if (solo) payers = [me];
   const paidIn = {}; if (e?.paid) for (const [u, v] of Object.entries(e.paid)) paidIn[u] = amtStr(v);
-  let split = e ? (e.shares && Object.keys(e.shares).length ? Object.keys(e.shares) : [...(e.split || [])]) : [...ms];
+  let split = e ? (e.shares && Object.keys(e.shares).length ? Object.keys(e.shares) : [...(e.split || [])]) : pre?.split ? [...pre.split] : [...ms];
   let custom = !!(e?.shares && Object.keys(e.shares).length) && !e?.rcpt;
   const shareIn = {}; if (custom) for (const [u, v] of Object.entries(e.shares)) shareIn[u] = amtStr(v);
   // 照收據逐筆填：有 rcpt 的舊記帳直接打開
-  let rc = e?.rcpt ? { ex: !!e.rcpt.ex, rate: e.rcpt.rate ?? 10, low: e.rcpt.low ?? 8, items: e.rcpt.items.map(x => ({ ...x, k: x.k || rk(), price: amtStr(x.price), who: { ...(x.who || {}) }, px: x.px ? { ...x.px, cid: x.px.cid || matchClient(clientsOf(t), x.px)?.id || null } : null })) } : null;
+  let rc = pre?.rc ? { ...pre.rc, items: pre.rc.items.map(x => ({ ...x })) } : e?.rcpt ? { ex: !!e.rcpt.ex, rate: e.rcpt.rate ?? 10, low: e.rcpt.low ?? 8, items: e.rcpt.items.map(x => ({ ...x, k: x.k || rk(), price: amtStr(x.price), who: { ...(x.who || {}) }, px: x.px ? { ...x.px, cid: x.px.cid || matchClient(clientsOf(t), x.px)?.id || null } : null })) } : null;
   let proxy = rc ? [] : (e?.proxy || []).map(x => ({ ...x, k: x.k || rk(), cid: x.cid || matchClient(clientsOf(t), x)?.id || null, amount: amtStr(x.amount) }));
   let refund = e?.refund ? { actual: amtStr(e.refund.actual), who: e.refund.who, settled: [...(e.refund.settled || [])] } : null;
   let settled = [...(e?.settled || [])];
-  let cat = e?.cat || (isNew ? localGet('mncat:' + t.id) : '') || 'food';
+  let cat = e?.cat || pre?.cat || (isNew ? localGet('mncat:' + t.id) : '') || 'food';
   const moreOpen = !!(proxy.length || refund || settled.length || e?.note);
   const memBtn = (attr, u, on) => `<button type="button" class="mem" data-${attr}="${esc(u)}" aria-pressed="${on}">${av(t, u, 'sm')}<span>${esc(nm(t, u))}</span></button>`;
   const allPeople = orderOf(t, [...payers, ...split]);
 
   openSheet(`<div class="sheet-h"><h3 class="title">${isNew ? '記一筆' : '編輯記帳'}</h3><button class="iconbtn" data-close aria-label="關閉">✕</button></div>
     <div id="eLock"></div>
-    <div class="field"><span id="lblCur">幣別</span><div class="seg" role="group" aria-labelledby="lblCur" id="eCurSeg">
+    <div class="field"><span id="lblCur">幣別</span><div class="seg" role="group" aria-labelledby="lblCur" id="eCurSeg" style="grid-template-columns:repeat(${curOpts.length}, minmax(0, 1fr)) auto">
       ${curOpts.map(c => `<button type="button" data-cur="${esc(c)}" aria-pressed="${c === cur}">${esc(curName(c))}</button>`).join('')}
       <select class="input ${curOpts.includes(cur) ? '' : 'on'}" id="eCurOther" aria-label="其他幣別"><option value="">其他</option>${CURRENCIES.filter(c => !curOpts.includes(c)).map(c => `<option value="${c}" ${c === cur ? 'selected' : ''} title="${esc(curName(c))}">${c}</option>`).join('')}</select>
     </div></div>
-    <label class="field"><span>品名</span><input class="input" id="eName" maxlength="100" value="${esc(e?.name || '')}" placeholder="例如：燒肉晚餐、唐吉訶德"></label>
-    <label class="field"><span>總額（實付）</span><input class="input big num" id="eAmt" inputmode="decimal" autocomplete="off" value="${esc(amtStr(e?.amount))}" placeholder="0">
+    <label class="field"><span>品名</span><input class="input" id="eName" maxlength="100" value="${esc(e?.name || pre?.name || '')}" placeholder="例如：燒肉晚餐、唐吉訶德"></label>
+    <label class="field"><span>總額（實付）</span><input class="input big num" id="eAmt" inputmode="decimal" autocomplete="off" value="${esc(amtStr(e?.amount ?? pre?.amount))}" placeholder="0">
       <span class="tiny faint" id="eAmtHint">可以直接打算式，例如 1200+850</span></label>
     <div class="field"><span id="lblCat">分類</span><div class="cat-pick" role="group" aria-labelledby="lblCat">
       ${Object.entries(CATS).map(([k, v]) => `<button type="button" class="cat" data-cat="${k}" aria-pressed="${cat === k}">${catIcon(k, 'xs')}<span>${v.label}</span></button>`).join('')}</div></div>
@@ -872,7 +872,8 @@ function editExpense(ctx, t, e) {
       if (rc) $('.rc-price', s)?.focus();
     });
     paintPx(); paintRf(); paintRc(); all();
-    if (isNew) setTimeout(() => $('#eName', s).focus(), 50);
+    if (isNew && !pre) setTimeout(() => $('#eName', s).focus(), 50);
+    if (pre?.hint) $('#eErr', s).insertAdjacentHTML('beforebegin', `<p class="tiny faint" style="margin:0">${esc(pre.hint)}</p>`);
 
     $('#eSave', s).addEventListener('click', () => {
       const err = m => { $('#eErr', s).textContent = m; toast(m); };
@@ -914,6 +915,7 @@ function editExpense(ctx, t, e) {
       const ref = isNew ? doc(collection(S.db, 'trips', t.id, 'expenses')) : doc(S.db, 'trips', t.id, 'expenses', e.id);
       // 整筆覆蓋（改成一位付款人／平均分攤時，舊的多人付款、各自金額、收據欄位會一起消失）
       write(setDoc(ref, { ...data, createdBy: e?.createdBy || me, createdAt: e?.createdAt || serverTimestamp() }));
+      if (isNew) pre?.onSaved?.(ref.id);
       closeSheet(); toast(navigator.onLine ? '已儲存' : '已儲存，恢復連線後會自動同步');
     });
     $('#eDel', s)?.addEventListener('click', () => {
@@ -924,3 +926,15 @@ function editExpense(ctx, t, e) {
     });
   });
 }
+
+/* ───────── 給其他頁面用：確保記帳資料已載入（購物清單選委託人、已買後記一筆）───────── */
+const keep = {};
+export function ensureMoney(ctx, t) {
+  if (!keep[t.id]) keep[t.id] = watchMoney(ctx, t.id, () => {});
+  return new Promise(res => {
+    let n = 0;
+    const tick = () => { const c = cache[t.id]; if ((c && c.list != null && c.settle != null && c.clients != null) || n++ > 40) res(); else setTimeout(tick, 100); };
+    tick();
+  });
+}
+export async function addExpenseFrom(ctx, t, pre) { await ensureMoney(ctx, t); editExpense(ctx, t, null, pre); }

@@ -8,6 +8,7 @@ import { renderPlan, watchItems, isBusy, exitSort } from './plan.js';
 import { renderBook, watchBookings } from './book.js';
 import { renderChecklist, watchChecklist } from './checklist.js';
 import { renderMoney, watchMoney } from './money.js';
+import { renderShop, watchShop } from './shop.js';
 import { COUNTRIES, countryBy, CURRENCIES, CUR_NAME, timeZones, todayIn, dayCount, tripStatus, STATUS_LABEL,
   fmtRange, placesText } from './places.js';
 
@@ -528,17 +529,25 @@ export function renderTripChecklist(ctx, id) {
     $('#main').innerHTML = `<div class="wrap">${ctx.topBar(homeBtn)}${S.trips ? '<section class="card"><b>找不到這趟旅程</b><p class="small muted" style="margin:0">可能已經被刪除，或你不是這趟旅程的成員。</p></section>' : '<div class="spinner" style="margin:40px auto"></div>'}</div>`;
     ctx.bindTop(); return;
   }
-  $('#main').innerHTML = `<div class="wrap has-tabs">${ctx.topBar(`<div class="row" style="gap:4px;min-width:0">${homeBtn}
+  const seg = localGet('lsseg:' + id) === 'shop' ? 'shop' : 'ck';
+  $('#main').innerHTML = `<div class="wrap has-tabs has-fab">${ctx.topBar(`<div class="row" style="gap:4px;min-width:0">${homeBtn}
       <div style="min-width:0"><div class="title ellip" style="font-size:17px">${esc(t.name)}</div><div class="tiny faint ellip">${esc(placesText(t.places))}</div></div></div>`)}
-    <div id="ckBody" style="display:flex;flex-direction:column;gap:14px"></div>
-  </div>${tabBar(id, 'list')}`;
+    <div class="seg" role="group" aria-label="清單" style="margin-bottom:4px">
+      <button type="button" data-ls="ck" aria-pressed="${seg === 'ck'}">準備清單</button><button type="button" data-ls="shop" aria-pressed="${seg === 'shop'}">購物清單</button></div>
+    <div id="${seg === 'ck' ? 'ckBody' : 'shBody'}" style="display:flex;flex-direction:column;gap:14px"></div>
+  </div><button type="button" class="fab hidden" id="fab" aria-label="新增">${ic.plus}</button>${tabBar(id, 'list')}`;
   ctx.bindTop(); bindTabs();
-  renderChecklist(ctx, t);
-  if (unsubs.ckFor !== id) {
-    unsubs.ckFor = id;
-    unsubs.push(watchChecklist(ctx, id, () => {
-      if (isBusy() || location.hash !== `#/trip/${id}/list`) return;
-      const cur = (S.trips || []).find(x => x.id === id); if (cur) renderChecklist(ctx, cur);
-    }));
+  $$('[data-ls]').forEach(b => b.addEventListener('click', () => { if (b.dataset.ls === seg) return; localSet('lsseg:' + id, b.dataset.ls); renderTripChecklist(ctx, id); window.scrollTo(0, 0); }));
+  const again = () => {
+    if (isBusy() || location.hash !== `#/trip/${id}/list` || document.querySelector('#sheet')) return;
+    const cur = (S.trips || []).find(x => x.id === id); if (!cur) return;
+    if ($('#ckBody')) renderChecklist(ctx, cur); else renderShop(ctx, cur);
+  };
+  if (seg === 'ck') {
+    renderChecklist(ctx, t);
+    if (unsubs.ckFor !== id) { unsubs.ckFor = id; unsubs.push(watchChecklist(ctx, id, again)); }
+  } else {
+    renderShop(ctx, t);
+    if (unsubs.shFor !== id) { unsubs.shFor = id; unsubs.push(watchShop(ctx, id, again)); }
   }
 }
