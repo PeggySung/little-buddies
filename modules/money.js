@@ -206,11 +206,11 @@ export function rcCalc(A, rc, cur) {
   const join = live.filter(x => !x.noDisc), pool = join.length ? join : live;
   const keys = pool.map(x => x.i), w = Object.fromEntries(pool.map(x => [x.i, x.taxed]));
   const mag = Math.abs(D), k = mag % U === 0 ? U : 1, al = mag ? lrAlloc(mag / k, keys, w) : {};
-  live.forEach(x => { x.cost = x.taxed + Math.sign(D) * (al[x.i] || 0) * k; if (x.cost < 0) err.push(`第 ${x.i + 1} 行折完變成負的，請檢查實付或「不參加折扣」`); });
+  live.forEach(x => { x.cost = x.taxed + Math.sign(D) * (al[x.i] || 0) * k; x.charge = D < 0 ? x.taxed : x.cost; if (x.cost < 0) err.push(`第 ${x.i + 1} 行折完變成負的，請檢查實付或「不參加折扣」`); });
   if (live.length && !isNaN(A) && S && Math.abs(D) > S * 0.3) warn.push(D < 0 ? `品項合計比實付多 ${money(-D, cur)}，是不是多打了一行？` : `實付比品項合計多 ${money(D, cur)}，是不是漏了一行？`);
   const shares = {}, byOwner = {}, proxy = [];
   for (const x of live) {
-    if (x.px) { byOwner[x.px.owner] = (byOwner[x.px.owner] || 0) + x.cost; proxy.push({ owner: x.px.owner, cid: x.px.cid || null, client: x.px.client || '', name: x.name || '', amount: x.cost / 100, k: x.k || rk() }); continue; }
+    if (x.px) { byOwner[x.px.owner] = (byOwner[x.px.owner] || 0) + x.cost; proxy.push({ owner: x.px.owner, cid: x.px.cid || null, client: x.px.client || '', name: x.name || '', amount: x.cost / 100, charge: x.charge / 100, k: x.k || rk() }); continue; }
     const ws = Object.fromEntries(Object.entries(x.who || {}).filter(([, q]) => q > 0)), ks = Object.keys(ws);
     const kk = x.cost % U === 0 ? U : 1, y = lrAlloc(x.cost / kk, ks, ws);
     x.parts = {}; ks.forEach(u => { const v = y[u] * kk; x.parts[u] = v; shares[u] = (shares[u] || 0) + v; });
@@ -403,7 +403,7 @@ const matchClient = (cs, x) => x.cid ? cs.find(c => c.id === x.cid) : cs.find(c 
 // 某位委託人的代購項目（照付款日期）、未收／已收
 function clientState(t, list, c) {
   const cs = clientsOf(t), all = [];
-  for (const e of list) (e.proxy || []).forEach((x, i) => { if (toC(x.amount) > 0 && matchClient(cs, x)?.id === c.id) all.push({ key: pxKey(e, x, i), e, x, amt: toC(x.amount) }); });
+  for (const e of list) (e.proxy || []).forEach((x, i) => { if (toC(x.amount) > 0 && matchClient(cs, x)?.id === c.id) all.push({ key: pxKey(e, x, i), e, x, amt: toC(x.charge ?? x.amount) }); });
   all.sort((a, b) => expDay(a.e).localeCompare(expDay(b.e)));
   const pays = Array.isArray(c.pays) ? c.pays : [], paidKeys = new Set(pays.flatMap(p => p.keys || []));
   return { all, pays, unpaid: all.filter(i => !paidKeys.has(i.key)), paid: all.filter(i => paidKeys.has(i.key)) };
@@ -691,9 +691,9 @@ function editExpense(ctx, t, e) {
       }
     };
     // 委託人選單：依負責人分組；最後一項新增
-    const cliSel = (attrs, o) => {
+    const cliSel = (attrs, o, cls = 'input') => {
       const cs = clientsOf(t), v = o.cid || (o.client ? '__legacy' : '');
-      return `<select class="input" ${attrs} aria-label="委託人"><option value="" ${v ? '' : 'selected'}>選委託人…</option>
+      return `<select class="${cls}${v ? '' : ' empty'}" ${attrs} aria-label="委託人"><option value="" ${v ? '' : 'selected'}>選委託人…</option>
         ${ms.map(u => { const g = cs.filter(c => c.owner === u); return g.length ? `<optgroup label="${esc(nm(t, u))} 負責">${g.map(c => `<option value="${esc(c.id)}" ${v === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</optgroup>` : ''; }).join('')}
         ${v === '__legacy' ? `<option value="__legacy" selected>${esc(o.client)}（還沒建檔）</option>` : ''}
         <option value="__new">＋ 新增委託人</option></select>`;
@@ -736,6 +736,7 @@ function editExpense(ctx, t, e) {
       box.innerHTML = `<section class="rc">
         <div class="row" style="justify-content:space-between;gap:8px;flex-wrap:wrap"><b>🧾 收據品項</b>
           <label class="row tiny" style="gap:6px"><input type="checkbox" id="rcEx" ${rc.ex ? 'checked' : ''}> 收據價格是未稅</label></div>
+        <p class="tiny faint rc-hint">上面的總額填收據最下面的<b>實付</b>。實付比品項合計少的部分就是<b>優惠券／折扣</b>，會照比例分給每行（代購的委託人還是付含稅價）。</p>
         ${rc.ex ? `<div class="row tiny" style="gap:8px;flex-wrap:wrap">稅率 <input class="input num rc-rate" id="rcRate" inputmode="decimal" value="${esc(String(rc.rate))}" aria-label="稅率">%　減免稅率 <input class="input num rc-rate" id="rcLow" inputmode="decimal" value="${esc(String(rc.low))}" aria-label="減免稅率">%<span class="faint">（例如日本食品 8%）</span></div>` : ''}
         <div class="rc-lines">${rc.items.map((x, i) => {
           const multi = !x.px && Object.keys(x.who || {}).filter(u => x.who[u] > 0).length > 1;
@@ -745,9 +746,8 @@ function editExpense(ctx, t, e) {
               <input class="input rc-name" data-ri="${i}" data-k="name" maxlength="60" value="${esc(x.name || '')}" placeholder="品名（選填）" aria-label="第 ${i + 1} 行品名">
               <button type="button" class="iconbtn" data-rmore="${i}" aria-label="第 ${i + 1} 行更多設定" aria-expanded="${!!x.open}">⋯</button></div>
             <div class="rc-who">${people.map(u => `<button type="button" class="rc-chip" data-rw="${i}:${esc(u)}" aria-pressed="${!x.px && x.who?.[u] > 0}" style="--c:${esc(t.members[u].color || '#999')}">${av(t, u, 'xs')}${esc(nm(t, u))}</button>`).join('')}
-              <button type="button" class="rc-chip" data-rpx="${i}" aria-pressed="${!!x.px}">🛍️ 代購</button></div>
+              <button type="button" class="rc-chip" data-rpx="${i}" aria-pressed="${!!x.px}">🛍️ 代購</button>${x.px ? cliSel(`data-rcl="${i}"`, x.px, 'input chipsel') : ''}</div>
             ${multi ? `<div class="rc-qty"><span class="tiny faint">幾份</span>${Object.keys(x.who).filter(u => x.who[u] > 0).map(u => `<label class="tiny row" style="gap:4px">${esc(nm(t, u))}<input class="input num" data-rq="${i}:${esc(u)}" inputmode="numeric" value="${x.who[u]}" aria-label="${esc(nm(t, u))} 幾份"></label>`).join('')}</div>` : ''}
-            ${x.px ? `<div class="row" style="gap:8px">${cliSel(`data-rcl="${i}"`, x.px)}${!solo && (x.px.cid || x.px.client) ? `<span class="tiny faint nowrap">${esc(nm(t, x.px.owner))} 負責</span>` : ''}</div>` : ''}
             ${x.open ? `<div class="rc-opts">${rc.ex ? `<label class="row tiny" style="gap:6px"><input type="checkbox" data-rflag="${i}:low" ${x.low ? 'checked' : ''}> 用減免稅率（${esc(String(rc.low))}%）</label>` : ''}
               <label class="row tiny" style="gap:6px"><input type="checkbox" data-rflag="${i}:noDisc" ${x.noDisc ? 'checked' : ''}> 不參加折扣（優惠券沒折到這件）</label>
               <button type="button" class="linkbtn" data-rdel="${i}" style="align-self:flex-start;color:var(--danger)">刪除這行</button></div>` : ''}
@@ -785,13 +785,13 @@ function editExpense(ctx, t, e) {
       for (const x of R.rows) {
         const el = $(`[data-rcost="${x.i}"]`, s); if (!el) continue;
         const l = R.live.find(y => y.i === x.i);
-        el.textContent = !l ? '' : l.px ? `→ ${money(l.cost, cur)}（${nm(t, l.px.owner)} 的代購${l.px.client ? `・${l.px.client}` : ''}）`
+        el.textContent = !l ? '' : l.px ? `→ ${money(l.cost, cur)}（${nm(t, l.px.owner)} 的代購${l.px.client ? `・${l.px.client}` : ''}）${l.charge !== l.cost ? `・向委託人收 ${money(l.charge, cur)}（含稅價，不扣優惠券）` : ''}`
           : l.parts && Object.keys(l.parts).length ? `→ ${money(l.cost, cur)}${Object.keys(l.parts).length > 1 ? `：${Object.entries(l.parts).map(([u, v]) => `${nm(t, u)} ${money(v, cur)}`).join('、')}` : ''}` : '';
       }
       const people = orderOf(t, [...Object.keys(R.shares), ...Object.keys(R.byOwner)]).filter(u => R.shares[u] || R.byOwner[u]);
       box.innerHTML = `<div class="rc-sum">
         <div class="row tiny muted" style="justify-content:space-between"><span>品項合計${rc.ex ? '（含稅）' : ''}</span><span class="num">${money(R.S, cur)}</span></div>
-        ${!isNaN(a) && R.D ? `<div class="row tiny muted" style="justify-content:space-between"><span>${R.D < 0 ? '折扣' : '服務費、稅等'}（照比例分給每行）</span><span class="num">${money(R.D, cur, true)}</span></div>` : ''}
+        <div class="row tiny muted" style="justify-content:space-between"><span>${R.D > 0 ? '服務費、稅等' : '優惠券／折扣'}（照比例分給每行）</span><span class="num">${isNaN(a) || !R.D ? '沒有' : money(R.D, cur, true)}</span></div>
         <div class="row tiny" style="justify-content:space-between"><b>實付</b><b class="num">${isNaN(a) ? '—' : money(a, cur)}</b></div>
         ${people.map(u => `<div class="row small" style="justify-content:space-between;gap:8px"><span class="row" style="gap:6px">${av(t, u, 'xs')}${esc(nm(t, u))}</span>
           <span class="num">${R.shares[u] ? money(R.shares[u], cur) : ''}${R.byOwner[u] ? `<span class="tiny faint">${R.shares[u] ? '＋' : ''}代購 ${money(R.byOwner[u], cur)}</span>` : ''}</span></div>`).join('')}
