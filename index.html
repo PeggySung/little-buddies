@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>小夥伴粗國玩 LITTLE BUDDIES</title>
+<title>小夥伴粗企玩 LITTLE BUDDIES</title>
 <meta name="description" content="小夥伴們的出國旅遊 app：行程、交通住宿、準備清單、記帳結算">
 <meta name="theme-color" content="#F7F4EC">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="img/favicon-48.png" sizes="48x48">
 <link rel="apple-touch-icon" href="img/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="小夥伴粗國玩">
+<meta name="apple-mobile-web-app-title" content="小夥伴粗企玩">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Huninn&family=Noto+Sans+TC:wght@400;500;700&family=Nunito:wght@700;800&display=swap" rel="stylesheet">
@@ -196,6 +196,29 @@ textarea.input { min-height: 84px; padding: 10px 14px; line-height: 1.6; resize:
 .mem[aria-pressed="false"] .av { opacity: .45; }
 .it.ev { text-decoration: none; color: var(--ink); }
 .ev-card { background: var(--sunk); box-shadow: none; border-style: solid; }
+
+/* 準備清單 */
+.av.xs { --s: 22px; border-width: 2px; font-size: 10px; }
+.bar { height: 10px; border-radius: 999px; background: var(--sunk); overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--acc); border-radius: 999px; transition: width .3s; }
+.ck-list { display: flex; flex-direction: column; background: var(--card); border: 1.5px solid var(--line); border-radius: var(--r-card); box-shadow: var(--shadow); overflow: hidden; }
+.ck { display: flex; align-items: flex-start; gap: 10px; padding: 10px 6px 10px 12px; border-top: 1.5px dashed var(--line); }
+.ck:first-child { border-top: 0; }
+.ck-box { width: 30px; height: 30px; margin: 7px 0; flex-shrink: 0; border-radius: 9px; border: 2px solid var(--line2); background: var(--card); color: var(--on-pri); display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; position: relative; }
+.ck-box::after { content: ""; position: absolute; inset: -7px; } /* 加大可點範圍 */
+.ck-box[aria-checked="true"], .ck.done .ck-box.ro { background: var(--acc); border-color: var(--acc); }
+.ck-box.ro { cursor: default; opacity: .6; }
+.ck-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; padding-top: 10px; }
+.ck-text { font-size: 15px; font-weight: 500; line-height: 1.45; }
+.ck.done .ck-text { color: var(--ink3); text-decoration: line-through; text-decoration-color: var(--line2); }
+.ck-who .av { box-shadow: 0 0 0 2px var(--card); margin-right: -4px; }
+.ck-who .undone .av { opacity: .35; filter: grayscale(1); }
+.linkbtn { border: 0; background: none; padding: 6px 4px; min-height: 32px; color: var(--sel-ink); font-weight: 700; font-size: 13px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; font-family: inherit; }
+.tpl-list { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.tpl { min-height: 88px; border-radius: var(--r-btn); border: 2px solid var(--line); background: var(--card); color: var(--ink); display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; padding: 10px 12px; text-align: left; cursor: pointer; font-family: inherit; }
+.tpl b { font-size: 15.5px; }
+.tpl[aria-pressed="true"] { border-color: var(--acc); background: var(--acc-soft); }
+.tpl:disabled { opacity: .45; cursor: default; }
 
 /* 底部彈出視窗 */
 .sheet-bg { position: fixed; inset: 0; z-index: 50; background: rgba(10, 14, 20, .45); display: flex; align-items: flex-end; justify-content: center; }

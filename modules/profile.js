@@ -104,6 +104,8 @@ async function saveProfile(ctx, data, isNew) {
     ...(isNew ? { createdAt: serverTimestamp() } : {})
   };
   if (payload.avatarType !== 'upload') { payload.avatarData = ''; payload.avatarThumb = ''; }
+  // 旅伴第一次建立個人檔案時要附上邀請碼，安全規則會檢查邀請碼有效（擋掉沒被邀請的陌生帳號）
+  if (isNew && !S.coreId) payload.inviteCode = ctx.inviteCode?.() || '';
   await setDoc(doc(S.db, 'users', S.user.uid), payload, { merge: true });
   ctx.setProfile({ ...(S.profile || {}), ...payload, id: S.user.uid });
   if (!isNew) ctx.afterProfileSave?.().catch(e => console.warn('同步旅程成員資料失敗', e));
@@ -113,6 +115,17 @@ async function saveProfile(ctx, data, isNew) {
 let ob = null;
 export function renderOnboarding(ctx) {
   const { S } = ctx;
+  // 沒有邀請碼的陌生帳號：不能建立個人檔案
+  if (!S.coreId && !ctx.inviteCode?.()) {
+    $('#main').innerHTML = `<div class="wrap">${ctx.topBar(ctx.brand)}
+      <section class="card"><b>需要小夥伴的邀請</b>
+        <p class="small muted" style="margin:0">小夥伴粗企玩只開放受邀的旅伴使用。請點小夥伴傳給你的邀請連結，再用這個 Google 帳號登入。</p>
+        <p class="tiny faint" style="margin:0">目前登入：${esc(S.user.email || '')}</p>
+        <button class="btn full" id="logout">${ic.out}登出，換一個帳號</button></section></div>`;
+    ctx.bindTop();
+    $('#logout').addEventListener('click', () => ctx.signOut());
+    return;
+  }
   if (!ob || ob.uid !== S.user.uid) {
     const c = coreById(S.coreId);
     ob = {
@@ -143,7 +156,7 @@ function renderOnboardForm(ctx) {
     <div class="row" style="gap:16px">
       ${avatarHTML(previewProfile(S, f), 'xl')}
       <div style="display:flex;flex-direction:column;gap:6px">
-        <h1 class="title" style="font-size:24px;line-height:1.3">${c ? `歡迎回來，${esc(c.name)}！` : '歡迎加入小夥伴粗國玩'}</h1>
+        <h1 class="title" style="font-size:24px;line-height:1.3">${c ? `歡迎回來，${esc(c.name)}！` : '歡迎加入小夥伴粗企玩'}</h1>
         <p class="small muted" style="margin:0">${c ? '你的代表色和頭像沿用沖繩之旅的設定。' : '先建立個人檔案，接著做個小測驗，找出你的代表色。'}</p>
       </div>
     </div>
@@ -243,7 +256,7 @@ function renderResult(ctx, st, onSave, saveLabel = '就用這個顏色') {
     if (!isAllowedGuestColor(res.color)) { $('#err').textContent = '這個顏色太像小夥伴的代表色了，請微調明暗或重新測驗。'; $('#err').classList.remove('hidden'); return; }
     const b = $('#save'); b.disabled = true;
     try { await onSave(res); }
-    catch (e) { b.disabled = false; toast('存檔失敗：' + (e?.code || e?.message)); }
+    catch (e) { b.disabled = false; toast(e?.code === 'permission-denied' && !ctx.S.coreId && !ctx.S.profile ? '存檔失敗：邀請碼可能已經過期或停用，請跟小夥伴要新的邀請連結' : '存檔失敗：' + (e?.code || e?.message)); }
   });
 }
 
@@ -279,6 +292,8 @@ export function renderProfile(ctx) {
     </section>
     <a class="btn full" href="#/me/edit">${ic.edit}編輯個人檔案</a>
     ${core ? '' : `<a class="btn full" href="#/me/color">重做代表色測驗</a>`}
+    ${core ? `<a class="btn full" href="https://console.firebase.google.com/project/fir-app-e6f7f/firestore" target="_blank" rel="noopener">查看資料庫用量（Firebase 後台）</a>
+      <p class="tiny faint" style="margin:-8px 0 0;text-align:center">打開後點上方的「用量」分頁。目前是免費方案，用量超過上限只會暫停到隔天，不會收費。</p>` : ''}
     <button class="btn full danger" id="logout">${ic.out}登出</button>
     <p class="tiny faint" style="text-align:center;margin:0">${esc(ctx.S.user.email || '')}</p>
   </div>`;

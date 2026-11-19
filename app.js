@@ -1,4 +1,4 @@
-// 小夥伴粗國玩：登入、路由、首頁
+// 小夥伴粗企玩：登入、路由、首頁
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, memoryLocalCache,
@@ -6,10 +6,11 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
 import { firebaseConfig } from './firebase-config.js';
 import { stopAllItems, resetPlanUI, isBusy } from './modules/plan.js';
 import { stopAllBookings } from './modules/book.js';
+import { stopAllChecklist } from './modules/checklist.js';
 import { $, esc, ic, applyTheme, toggleTheme, isDark, copyText } from './modules/ui.js';
 import { CORE } from './modules/color.js';
 import { renderOnboarding, renderProfile, renderEdit, renderQuizRedo, avatarHTML } from './modules/profile.js';
-import { renderHome, renderTripForm, renderTrip, renderTripPlan, renderTripBook, renderJoin, ensureTrips, stopTrips, cleanup, makeSync, pendingJoin } from './modules/trips.js';
+import { renderHome, renderTripForm, renderTrip, renderTripPlan, renderTripBook, renderTripChecklist, renderJoin, ensureTrips, stopTrips, cleanup, makeSync, pendingJoin } from './modules/trips.js';
 
 applyTheme();
 
@@ -43,8 +44,8 @@ function inAppBrowser() {
   if (/MicroMessenger/i.test(ua)) return '微信';
   return null;
 }
-const gateHead = () => `<img class="logo" src="img/icon-512.png" alt="小夥伴粗國玩 LITTLE BUDDIES 圖示">
-  <div><h1>小夥伴粗國玩</h1><div class="en">LITTLE BUDDIES</div></div>`;
+const gateHead = () => `<img class="logo" src="img/icon-512.png" alt="小夥伴粗企玩 LITTLE BUDDIES 圖示">
+  <div><h1>小夥伴粗企玩</h1><div class="en">LITTLE BUDDIES</div></div>`;
 
 function showLogin(errText = '') {
   const iab = inAppBrowser();
@@ -94,7 +95,7 @@ function topBar(left) {
 function bindTop() {
   $('#themeBtn')?.addEventListener('click', () => { toggleTheme(); render(true); });
 }
-const brand = `<a class="brand" href="#/"><img src="img/icon-192.png" alt=""><span>小夥伴粗國玩</span></a>`;
+const brand = `<a class="brand" href="#/"><img src="img/icon-192.png" alt=""><span>小夥伴粗企玩</span></a>`;
 
 /* ───────── 路由 ───────── */
 let lastRoute = null;
@@ -113,6 +114,7 @@ function render(keep = false) {
   if ((m = route.match(/^trip\/([\w-]+)\/plan$/))) return renderTripPlan(ctx, m[1]);
   if ((m = route.match(/^trip\/([\w-]+)\/plan\/sort\/(\d+)$/))) return renderTripPlan(ctx, m[1], +m[2]);
   if ((m = route.match(/^trip\/([\w-]+)\/book(?:\/([\w-]+))?$/))) return renderTripBook(ctx, m[1], m[2] || null);
+  if ((m = route.match(/^trip\/([\w-]+)\/list$/))) return renderTripChecklist(ctx, m[1]);
   if ((m = route.match(/^join\/([A-Za-z0-9]+)$/))) return renderJoin(ctx, m[1]);
   if (route !== '') { location.replace('#/'); return; }
   renderHome(ctx);
@@ -120,7 +122,7 @@ function render(keep = false) {
 // 旅程資料有變動時，只重畫「看資料」的頁面（表單頁不重畫，以免打到一半的字不見）
 function onTrips() {
   const route = location.hash.replace(/^#\/?/, '');
-  if (route === '' || /^trip\/[\w-]+$/.test(route) || (/^trip\/[\w-]+\/(plan|book)$/.test(route) && !isBusy())) render(true);
+  if (route === '' || /^trip\/[\w-]+$/.test(route) || (/^trip\/[\w-]+\/(plan|book|list)$/.test(route) && !isBusy())) render(true);
 }
 function afterOnboard() {
   ensureTrips(ctx, onTrips);
@@ -128,7 +130,7 @@ function afterOnboard() {
   location.hash = code ? `#/join/${code}` : '#/';
   render();
 }
-const ctx = { S, render, topBar, bindTop, brand, afterOnboard, signOut: () => { stopTrips(); stopAllItems(); stopAllBookings(); return signOut(auth); }, setProfile: p => { S.profile = p; } };
+const ctx = { S, render, topBar, bindTop, brand, afterOnboard, inviteCode: () => pendingJoin.get(), signOut: () => { stopTrips(); stopAllItems(); stopAllBookings(); stopAllChecklist(); return signOut(auth); }, setProfile: p => { S.profile = p; } };
 ctx.afterProfileSave = makeSync(ctx);
 window.addEventListener('hashchange', () => { resetPlanUI(); render(); });
 
@@ -148,8 +150,10 @@ onAuthStateChanged(auth, async user => {
   S.user = user; S.profile = null; S.coreId = null; S.trips = null; lastRoute = null;
   if (!user) { stopTrips(); return showLogin(); }
   $('#main').innerHTML = '<div class="gate"><div class="spinner" role="status" aria-label="載入中"></div></div>';
+  // 15 秒還讀不到就顯示「連不上」，不要一直轉圈
+  const withTimeout = (p, ms = 15000) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(Object.assign(new Error('timeout'), { code: 'timeout' })), ms))]);
   try {
-    const snap = await getDoc(doc(db, 'users', user.uid));
+    const snap = await withTimeout(getDoc(doc(db, 'users', user.uid)));
     if (snap.exists()) {
       S.profile = { id: user.uid, ...snap.data() };
       S.coreId = S.profile.coreId || null;
@@ -158,13 +162,13 @@ onAuthStateChanged(auth, async user => {
       if (code && !location.hash.startsWith('#/join/')) location.replace(`#/join/${code}`);
     } else {
       if (!navigator.onLine) return showMessage('第一次登入需要網路', '連上網路後再重新整理一次，之後沒有訊號也能打開。');
-      S.coreId = await detectCore();
+      S.coreId = await withTimeout(detectCore());
     }
     render();
   } catch (e) {
     console.error(e);
     if (e?.code === 'permission-denied') return showMessage('沒有權限', 'Firestore 安全規則可能還沒發布。請確認後再重新整理。', true);
-    if (e?.code === 'unavailable') return showMessage('連不上伺服器', '請確認網路後重新整理。');
+    if (e?.code === 'unavailable' || e?.code === 'timeout') return showMessage('連不上伺服器', '等了 15 秒還是讀不到資料。請確認網路後按「重新整理」；一直這樣的話，請截圖給負責維護 app 的小夥伴。');
     showMessage('出了點問題', String(e?.code || e?.message || e), true);
   }
 });

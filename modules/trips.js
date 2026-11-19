@@ -6,10 +6,11 @@ import { avatarHTML } from './profile.js';
 import { adjustForPeers } from './color.js';
 import { renderPlan, watchItems, isBusy, exitSort } from './plan.js';
 import { renderBook, watchBookings } from './book.js';
+import { renderChecklist, watchChecklist } from './checklist.js';
 import { COUNTRIES, countryBy, CURRENCIES, CUR_NAME, timeZones, todayIn, dayCount, tripStatus, STATUS_LABEL,
   fmtRange, placesText } from './places.js';
 
-export const APP_VERSION = 'v0.4.1';
+export const APP_VERSION = 'v0.5';
 const OTHER = 'OT';
 // 旅程裡的分頁（資訊、行程…）是同一層，左上角放回首頁的 logo；點進去的細項頁才用「上一頁」箭頭
 const homeBtn = `<a class="iconbtn home-btn" href="#/" aria-label="回首頁（旅程列表）" style="margin-left:-6px"><img src="img/icon-192.png" alt="" width="32" height="32"></a>`; // 清單以外的國家
@@ -120,7 +121,7 @@ export function renderHome(ctx) {
     const stats = [[countries.size, '國家'], [regions.size, '地區'], [fp.length, '趟旅程'], [people.size, '位旅伴']];
     $('#main').innerHTML = `<div class="wrap">${ctx.topBar(ctx.brand)}
       <div><div class="small muted">嗨，${esc(S.profile.nickname)}</div>
-        <h1 class="title" style="font-size:25px;line-height:1.35">下一趟想去哪裡粗國玩？</h1></div>
+        <h1 class="title" style="font-size:25px;line-height:1.35">下一趟想去哪裡粗企玩？</h1></div>
       <section class="card">
         <div class="row" style="justify-content:space-between"><h2 class="title" style="font-size:17px">${core ? '我們的足跡' : '我的足跡'}</h2></div>
         <div class="stats">${stats.map(([n, l]) => `<div><b class="num">${n}</b><span class="tiny faint">${l}</span></div>`).join('')}</div>
@@ -134,7 +135,7 @@ export function renderHome(ctx) {
           : '小夥伴邀請你加入旅程後，旅程會出現在這裡。收到邀請連結就直接點開吧！'}</p></section>`
         : groups.filter(([, ts]) => ts.length).map(([k, ts]) => `<section class="sec">
             <h2 class="sec-h">${STATUS_LABEL[k]}</h2>${ts.map(t => tripCard(t, uid)).join('')}</section>`).join('')}
-      <p class="tiny faint" style="text-align:center;margin:0">小夥伴粗國玩 ${APP_VERSION}</p>
+      <p class="tiny faint" style="text-align:center;margin:0">小夥伴粗企玩 ${APP_VERSION}</p>
     </div>`;
     ctx.bindTop();
   };
@@ -161,7 +162,7 @@ export function renderTripForm(ctx, tripId) {
     <h1 class="title" style="font-size:25px">${editing ? '編輯旅程' : '開新旅程'}</h1>
     <section class="card">
       <label class="field"><span>旅程名稱</span>
-        <input class="input" id="tName" maxlength="40" value="${esc(f.name)}" placeholder="例如：小夥伴粗國玩 北海道之旅"></label>
+        <input class="input" id="tName" maxlength="40" value="${esc(f.name)}" placeholder="例如：小夥伴粗企玩 北海道之旅"></label>
       <div class="field"><span>目的地</span>
         ${f.places.map((p, i) => `<div class="place-row">
           <select class="input" data-pc="${i}" aria-label="第 ${i + 1} 個目的地的國家">
@@ -302,7 +303,7 @@ export function renderTrip(ctx, id) {
       </section>` : ''}
       <section class="card">
         <div class="row" style="justify-content:space-between"><h2 class="title" style="font-size:17px">接下來會開放</h2><span class="chip">製作中</span></div>
-        <p class="small muted" style="margin:0">準備清單、記帳會在之後的版本陸續加上。</p>
+        <p class="small muted" style="margin:0">記帳（分攤、結算、多幣別）會在下一版加上。</p>
       </section>
       ${owner ? `<a class="btn full" href="#/trip/${esc(id)}/edit">${ic.edit}編輯旅程</a>` : ''}
       ${!member ? '<p class="tiny faint" style="text-align:center;margin:0">你沒有參加這趟旅程，只能看摘要。</p>' : ''}
@@ -347,8 +348,8 @@ async function createInvite(ctx, t) {
 }
 async function shareInvite(t, code, base) {
   const url = `${base}?join=${code}`;
-  const text = `一起去粗國玩！加入「${t.name}」：`;
-  if (navigator.share) { try { await navigator.share({ title: '小夥伴粗國玩', text, url }); return; } catch (e) { if (e?.name === 'AbortError') return; } }
+  const text = `一起去粗企玩！加入「${t.name}」：`;
+  if (navigator.share) { try { await navigator.share({ title: '小夥伴粗企玩', text, url }); return; } catch (e) { if (e?.name === 'AbortError') return; } }
   copyText(`${text}${url}`);
 }
 
@@ -415,7 +416,7 @@ export async function renderJoin(ctx, code) {
 
 /* ───────── 旅程分頁列 ───────── */
 function tabBar(id, active) {
-  const tabs = [['info', '資訊', `#/trip/${id}`], ['trip', '行程', `#/trip/${id}/plan`], ['ticket', '交通住宿', `#/trip/${id}/book`], ['list', '清單', ''], ['money', '記帳', '']];
+  const tabs = [['info', '資訊', `#/trip/${id}`], ['trip', '行程', `#/trip/${id}/plan`], ['ticket', '交通住宿', `#/trip/${id}/book`], ['list', '清單', `#/trip/${id}/list`], ['money', '記帳', '']];
   return `<nav class="tabbar" aria-label="旅程分頁">${tabs.map(([k, l, href]) => href
     ? `<a href="${href}" class="${active === k ? 'on' : ''}" ${active === k ? 'aria-current="page"' : ''}><span class="pill">${ic[k]}</span>${l}</a>`
     : `<button type="button" class="soon" data-soon="${l}"><span class="pill">${ic[k]}</span>${l}</button>`).join('')}</nav>`;
@@ -477,6 +478,29 @@ export function renderTripBook(ctx, id, focusId = null) {
     unsubs.push(watchBookings(ctx, id, () => {
       if (isBusy() || !location.hash.startsWith(`#/trip/${id}/book`)) return;
       const cur = (S.trips || []).find(x => x.id === id); if (cur) renderBook(ctx, cur);
+    }));
+  }
+}
+
+/* ───────── 準備清單頁 ───────── */
+export function renderTripChecklist(ctx, id) {
+  const { S } = ctx;
+  const t = (S.trips || []).find(x => x.id === id);
+  if (!t || !(t.memberUids || []).includes(S.user.uid)) {
+    $('#main').innerHTML = `<div class="wrap">${ctx.topBar(homeBtn)}${S.trips ? '<section class="card"><b>找不到這趟旅程</b><p class="small muted" style="margin:0">可能已經被刪除，或你不是這趟旅程的成員。</p></section>' : '<div class="spinner" style="margin:40px auto"></div>'}</div>`;
+    ctx.bindTop(); return;
+  }
+  $('#main').innerHTML = `<div class="wrap has-tabs">${ctx.topBar(`<div class="row" style="gap:4px;min-width:0">${homeBtn}
+      <div style="min-width:0"><div class="title ellip" style="font-size:17px">${esc(t.name)}</div><div class="tiny faint ellip">${esc(placesText(t.places))}</div></div></div>`)}
+    <div id="ckBody" style="display:flex;flex-direction:column;gap:14px"></div>
+  </div>${tabBar(id, 'list')}`;
+  ctx.bindTop(); bindTabs();
+  renderChecklist(ctx, t);
+  if (unsubs.ckFor !== id) {
+    unsubs.ckFor = id;
+    unsubs.push(watchChecklist(ctx, id, () => {
+      if (isBusy() || location.hash !== `#/trip/${id}/list`) return;
+      const cur = (S.trips || []).find(x => x.id === id); if (cur) renderChecklist(ctx, cur);
     }));
   }
 }
