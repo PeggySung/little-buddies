@@ -113,7 +113,12 @@ h1, h2, h3 { margin: 0; font-weight: 400; }
 .sec-h.fold svg { transition: transform .2s; flex-shrink: 0; }
 .sec-h.fold[aria-expanded="false"] svg { transform: rotate(-90deg); }
 .sec-h.fold .ok { color: var(--acc-ink, var(--ink2)); }
-.fold-all { align-self: flex-end; margin: -6px 0 -8px; }
+.fold-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: -2px 2px -6px; }
+.fold-bar > span { font-size: 13px; font-weight: 700; color: var(--ink3); letter-spacing: 1px; }
+.fold-all { position: relative; display: inline-flex; align-items: center; gap: 4px; min-height: 32px; padding: 0 12px 0 9px; border: 0; border-radius: 999px; background: var(--sunk); color: var(--ink2); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.fold-all::after { content: ""; position: absolute; inset: -6px -4px; }
+.fold-all:hover { background: var(--line); }
+.fold-all:focus-visible { outline: 2.5px solid var(--acc); outline-offset: 2px; }
 /* ───────── 記帳 ───────── */
 :root { --ok:#1F7A4D; --pos:#1F7A4D; --neg:#B42318; }
 [data-theme="dark"] { --ok:#6FD3A0; --pos:#6FD3A0; --neg:#FF8A80; }
@@ -241,12 +246,16 @@ div.sh-main { cursor: default; }
 .sh-big img { max-width: 100%; max-height: 70dvh; object-fit: contain; display: block; }
 .sh-photo { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .sh-photo img { width: 96px; height: 96px; object-fit: cover; border-radius: 12px; border: 1.5px solid var(--line); }
-.ttabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; border-radius: 999px; background: var(--sunk); border: 1.5px solid var(--line); }
-.ttabs button { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border-radius: 999px; border: 1.5px solid transparent; background: none; color: var(--ink3); font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; transition: background .15s, border-color .15s; }
-.ttabs button svg { width: 18px; height: 18px; }
-.ttabs button[aria-selected="true"] { background: var(--card); border-color: var(--acc); color: var(--ink); box-shadow: 0 1px 3px rgba(36,50,74,.10); }
-.ttabs button:not([aria-selected="true"]):hover { color: var(--ink2); background: rgba(127,127,127,.08); }
-.ttabs button:focus-visible { outline: 2.5px solid var(--acc); outline-offset: 2px; }
+.ttabs { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; padding: 3px; height: 44px; box-sizing: border-box; border-radius: 999px; background: #ECE6D9; }
+.ttabs button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border-radius: 999px; border: 0; background: none; color: var(--ink3); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; transition: background .15s, box-shadow .15s, color .15s; }
+.ttabs button svg { width: 17px; height: 17px; }
+.ttabs button[aria-selected="true"] { background: #FFFFFF; color: var(--ink); box-shadow: 0 1px 2px rgba(36,50,74,.10), 0 2px 6px rgba(36,50,74,.06); }
+.ttabs button[aria-selected="true"] svg { color: #E0A12E; }
+.ttabs button:not([aria-selected="true"]):hover { color: var(--ink2); }
+.ttabs button:focus-visible { outline: 2.5px solid var(--acc); outline-offset: 1px; }
+[data-theme="dark"] .ttabs { background: var(--card); }
+[data-theme="dark"] .ttabs button[aria-selected="true"] { background: #2A3444; box-shadow: none; }
+[data-theme="dark"] .ttabs button[aria-selected="true"] svg { color: var(--pri); }
 .utabs { display: flex; border-bottom: 1.5px solid var(--line); overflow-x: auto; scrollbar-width: none; }
 .utabs::-webkit-scrollbar { display: none; }
 .utabs button { flex: 1 0 auto; min-height: 46px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 12px; border: 0; border-bottom: 3px solid transparent; margin-bottom: -1.5px; background: none; color: var(--ink3); font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; white-space: nowrap; }

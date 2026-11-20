@@ -137,7 +137,9 @@ export function renderChecklist(ctx, t) {
     return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
   });
   const fold = readFold(t.id);
-  const catAll = c => shown.filter(x => (x.cat || '其他') === c).every(x => itemDone(t, x));
+  // 分類的完成數：「我的」看自己有沒有打勾，「全部・團隊」看大家是不是都完成
+  const doneFor = x => view === 'mine' ? (x.scope === 'claim' ? x.claimBy === me && isDone(x, me) : isDone(x, me)) : itemDone(t, x);
+  const catAll = c => shown.filter(x => (x.cat || '其他') === c).every(doneFor);
   const pct = myItems.length ? Math.round(myDone / myItems.length * 100) : 0;
   const bar = (p, label) => `<div class="bar" role="progressbar" aria-valuenow="${p}" aria-valuemin="0" aria-valuemax="100" aria-label="${esc(label)}"><i style="width:${p}%"></i></div>`;
   const seg = `<div class="utabs" role="tablist" aria-label="顯示">
@@ -151,13 +153,13 @@ export function renderChecklist(ctx, t) {
     </section>`;
   host.innerHTML = `
     ${list.length ? seg + (view === 'mine' ? mineCard : teamCard(t, list, me, bar)) : ''}
-    ${cats.length > 1 ? `<button type="button" class="linkbtn fold-all" id="ckFoldAll">${cats.every(c => isFolded(fold, c, catAll(c))) ? '全部展開' : '全部收合'}</button>` : ''}
+    ${shown.length && cats.length > 1 ? `<div class="fold-bar"><span>分類 ${cats.length}</span><button type="button" class="fold-all" id="ckFoldAll">${ic.chevUD}<span>${cats.every(c => isFolded(fold, c, catAll(c))) ? '全部展開' : '全部收合'}</span></button></div>` : ''}
     ${!list.length ? `<div class="card empty"><p class="small muted" style="margin:0">還沒有清單。可以從範本一次加入常用項目，再刪掉不需要的，或自己一項一項新增。</p>
         <button class="btn pri full" id="ckTpl">從範本加入</button></div>`
       : !shown.length ? '<div class="card empty"><p class="small muted" style="margin:0">你目前沒有要準備的項目。</p></div>'
       : cats.map(c => {
         const xs = shown.filter(x => (x.cat || '其他') === c).sort((a, b) => (a.order || 0) - (b.order || 0));
-        const n = xs.filter(x => itemDone(t, x)).length;
+        const n = xs.filter(doneFor).length;
         const open = !isFolded(fold, c, n === xs.length);
         return `<section class="sec"><h3 style="margin:0"><button type="button" class="sec-h fold" data-fold="${esc(c)}" aria-expanded="${open}">
             <span>${esc(c)} <span class="${n === xs.length ? 'ok' : 'faint'}">${n}/${xs.length}${n === xs.length ? ' ✓' : ''}</span></span>${ic.down}</button></h3>
@@ -172,7 +174,7 @@ export function renderChecklist(ctx, t) {
     $(`[data-fold="${CSS.escape(b.dataset.fold)}"]`, host)?.focus();
   }));
   $('#ckFoldAll', host)?.addEventListener('click', e => {
-    const close = e.currentTarget.textContent === '全部收合';
+    const close = e.currentTarget.textContent.trim() === '全部收合';
     cats.forEach(c => { fold[c] = close; }); saveFold(t.id, fold); renderChecklist(ctx, t);
   });
   $('#ckAdd', host)?.addEventListener('click', () => editItem(ctx, t, null));
