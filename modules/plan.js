@@ -4,7 +4,7 @@ import { $, $$, esc, ic, toast, copyText, localGet, localSet } from './ui.js';
 import { todayIn, dayCount, tripStatus } from './places.js';
 import { bookingEvents } from './book.js';
 
-// 類型：圖示在 img/kinds/（Gemini 畫的線條圖示，用遮罩上色，顏色跟著深淺色主題）
+// 類型圖示：11/20 改成自己畫的線條 SVG（跟底部分頁同一套粗細），顏色跟著深淺色主題
 const KINDS = {
   spot: { label: '景點／活動', group: 'stay' },
   food: { label: '吃東西', group: 'stay' },
@@ -21,7 +21,18 @@ export const ICON_VER = 'line1';
 const isGo = k => KINDS[k]?.group === 'go';
 // 舊資料：類型是「移動」但標題寫步行，當成步行
 const kindOf = x => (x.kind === 'move' && /步行|走路/.test(x.title || '') ? 'walk' : (KINDS[x.kind] ? x.kind : 'spot'));
-export const kindIcon = (k, go, cls = '') => `<span class="kind ${cls} ${go ? 'go' : ''}" aria-hidden="true"><span class="kmask" style="--k:url(img/kinds/${k}.webp?v=${ICON_VER})"></span></span>`;
+const KIND_SVG = {
+  spot: '<path d="M4 8.5a2 2 0 0 1 2-2h2.2l1.4-2h4.8l1.4 2H18a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><circle cx="12" cy="12.8" r="3.3"/><circle cx="17.1" cy="9.4" r="0.95" fill="currentColor" stroke="none"/>',
+  food: '<path d="M3.5 11.2h17a8.5 8.3 0 0 1-17 0z"/><path d="M9.2 20.6h5.6"/><path d="M11.4 11.2l6.3-8.4M14.3 11.2l5.4-6.8"/>',
+  stay: '<g transform="translate(0 1.2)"><path d="M3.5 17V6.5M3.5 15h17M20.5 17v-4.5a2.5 2.5 0 0 0-2.5-2.5h-7.5v5"/><circle cx="7" cy="11.8" r="1.9"/></g>',
+  shop: '<path d="M5.5 8.5h13l-1 11.5h-11z"/><path d="M9 11V7a3 3 0 0 1 6 0v4"/>',
+  move: '<path d="M3.8 15.6v-2.8l2-4.8a1.8 1.8 0 0 1 1.7-1.1h8.3a1.8 1.8 0 0 1 1.5.8l2.9 4.3h.6a1.4 1.4 0 0 1 1.4 1.4v2.2z"/><path d="M3.8 12h16.6M11 7v5"/><circle cx="7.6" cy="17.5" r="1.9"/><circle cx="16.6" cy="17.5" r="1.9"/>',
+  walk: '<circle cx="13.6" cy="4.2" r="2"/><path d="M13.1 6.9l-1.5 6.4"/><path d="M11.6 13.3l-1.7 7.3M11.6 13.3l2.4 3 .3 4.3"/><path d="M12.8 8.6c-1.8.4-3 1.5-3.6 3.1M12.8 8.6c1 1.3 2.2 2.1 3.6 2.4"/>',
+  train: '<path d="M3 16.6V10a1.8 1.8 0 0 1 1.8-1.8h10.6c3 0 5.6 2.5 5.6 5.4v3z"/><path d="M5.6 11.2h7.6M16 11.2h1.6"/><path d="M9.6 8.2V5.9M8 5.6h3.2"/><circle cx="7.4" cy="18.1" r="1.4"/><circle cx="16.4" cy="18.1" r="1.4"/>',
+  bus: '<path d="M3 16.2V7.2A2.2 2.2 0 0 1 5.2 5h12.3a2.5 2.5 0 0 1 2.4 1.8l1.1 3.7v5.7z"/><path d="M3 11h18M11.5 5v6"/><circle cx="6.4" cy="18.1" r="1.9"/><circle cx="17.6" cy="18.1" r="1.9"/>',
+  flight: '<g transform="rotate(-40 12 12)"><path d="M15.5 10.2h4a1.9 1.9 0 0 1 0 3.8h-4l-3.8 6.8H9l2-6.8H7.2l-2 2H2.6l1.6-3.9-1.6-3.9h2.6l2 2H11L9 3.4h2.7z"/></g>'
+};
+export const kindIcon = (k, go, cls = '') => `<span class="kind ${cls} ${go ? 'go' : ''}" aria-hidden="true"><svg class="ksvg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${KIND_SVG[k] || KIND_SVG.spot}</svg></span>`;
 const kindImg = (x, cls = '') => { const k = kindOf(x); return kindIcon(k, isGo(k), cls); };
 const durLabel = k => `${isGo(k) ? '車程時間' : '停留時間'}（分鐘，選填）`;
 const W = ['日', '一', '二', '三', '四', '五', '六'];
