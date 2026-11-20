@@ -41,6 +41,11 @@ export const ic = {
   bag: svg('<path d="M6 8h12l-1 12H7L6 8z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>', 20, 2),
   chevUD: svg('<path d="M8 9l4-4 4 4M8 15l4 4 4-4"/>', 16, 2.2),
   money: svg('<path d="M4 7h16v11H4zM4 10.5h16M8 14.5h3"/>', 20),
+  // 底部分頁（11/20 選定：i 資訊、路線、拉桿行李箱、打勾板夾、收據）
+  tabRoute: svg('<circle cx="6" cy="18.5" r="2.2"/><circle cx="18" cy="5.5" r="2.2"/><path d="M8.2 18.5h7.3a3.25 3.25 0 0 0 0-6.5h-7a3.25 3.25 0 0 1 0-6.5h7.3"/>', 20),
+  tabBag: svg('<path d="M10 6V3h4v3"/><rect x="6" y="6" width="12" height="13" rx="2.5"/><path d="M10 10v5M14 10v5"/><circle cx="8.5" cy="21" r="1"/><circle cx="15.5" cy="21" r="1"/>', 20),
+  tabClip: svg('<rect x="5" y="4.5" width="14" height="16.5" rx="2.5"/><rect x="9" y="2.5" width="6" height="3.5" rx="1"/><path d="M9 13.2l2.2 2.2 4.3-4.4"/>', 20),
+  tabReceipt: svg('<path d="M6 3h12v18l-2-1.4-2 1.4-2-1.4-2 1.4-2-1.4L6 21z"/><path d="M9.5 8h5M9.5 11.5h5M9.5 15h3"/>', 20),
   sort: svg('<path d="M8 4v16M4.5 7.5 8 4l3.5 3.5M16 20V4M12.5 16.5 16 20l3.5-3.5"/>', 16),
   grip: svg('<circle cx="9" cy="6" r="1.3"/><circle cx="15" cy="6" r="1.3"/><circle cx="9" cy="12" r="1.3"/><circle cx="15" cy="12" r="1.3"/><circle cx="9" cy="18" r="1.3"/><circle cx="15" cy="18" r="1.3"/>', 20),
   up: svg('<path d="M6 15l6-6 6 6"/>', 20, 2.2),

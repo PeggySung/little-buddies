@@ -434,9 +434,10 @@ export async function renderJoin(ctx, code) {
 /* ───────── 旅程分頁列 ───────── */
 function tabBar(id, active) {
   const tabs = [['info', '資訊', `#/trip/${id}`], ['trip', '行程', `#/trip/${id}/plan`], ['ticket', '交通住宿', `#/trip/${id}/book`], ['list', '清單', `#/trip/${id}/list`], ['money', '記帳', `#/trip/${id}/money`]];
+  const icon = { info: ic.info, trip: ic.tabRoute, ticket: ic.tabBag, list: ic.tabClip, money: ic.tabReceipt };
   return `<nav class="tabbar" aria-label="旅程分頁">${tabs.map(([k, l, href]) => href
-    ? `<a href="${href}" class="${active === k ? 'on' : ''}" ${active === k ? 'aria-current="page"' : ''}><span class="pill">${ic[k]}</span>${l}</a>`
-    : `<button type="button" class="soon" data-soon="${l}"><span class="pill">${ic[k]}</span>${l}</button>`).join('')}</nav>`;
+    ? `<a href="${href}" class="${active === k ? 'on' : ''}" ${active === k ? 'aria-current="page"' : ''}><span class="pill">${icon[k]}</span>${l}</a>`
+    : `<button type="button" class="soon" data-soon="${l}"><span class="pill">${icon[k]}</span>${l}</button>`).join('')}</nav>`;
 }
 function bindTabs() { $$('[data-soon]').forEach(b => b.addEventListener('click', () => toast(`「${b.dataset.soon}」還在製作中，下一版開放`))); }
 
