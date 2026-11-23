@@ -2,14 +2,14 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, memoryLocalCache,
-  doc, getDoc, getDocFromServer } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+  doc, getDoc, getDocFromServer, setDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { firebaseConfig } from './firebase-config.js';
 import { stopAllItems, resetPlanUI, isBusy } from './modules/plan.js';
 import { stopAllBookings } from './modules/book.js';
 import { stopAllChecklist } from './modules/checklist.js';
 import { stopAllMoney } from './modules/money.js';
 import { stopAllShop } from './modules/shop.js';
-import { $, esc, ic, applyTheme, toggleTheme, isDark, copyText } from './modules/ui.js';
+import { $, esc, ic, toast, applyTheme, toggleTheme, isDark, copyText } from './modules/ui.js';
 import { CORE } from './modules/color.js';
 import { renderOnboarding, renderProfile, renderEdit, renderQuizRedo, avatarHTML } from './modules/profile.js';
 import { renderHome, renderTripForm, renderTrip, renderTripPlan, renderTripBook, renderTripChecklist, renderTripMoney, renderJoin, ensureTrips, stopTrips, cleanup, makeSync, pendingJoin } from './modules/trips.js';
@@ -35,6 +35,22 @@ async function detectCore() {
     catch (e) { if (e?.code !== 'permission-denied') throw e; }
   }
   return null;
+}
+
+/* ───────── 旅伴升級成小夥伴 ─────────
+   先用旅伴身分建好個人檔案、之後才被加進核心名單的人（例如阿蓁），登入時改成小夥伴身分。
+   每台裝置、每份核心名單只檢查一次（旅伴不會每次打開都多讀資料）；名單有變才會再檢查。 */
+async function upgradeToCore(user) {
+  const key = `lb-coreCheck-${user.uid}`, mark = CORE.map(c => c.id).join(',');
+  try { if (localStorage.getItem(key) === mark) return null; } catch {}
+  const id = await detectCore();
+  try { localStorage.setItem(key, mark); } catch {}
+  const c = CORE.find(x => x.id === id);
+  if (!c) return null;
+  const patch = { coreId: c.id, color: c.color, colorDark: c.colorDark, colorName: `${c.name}的代表色`, colorDesc: '',
+    avatarType: 'core', avatarData: '', avatarThumb: '', updatedAt: serverTimestamp() };
+  await setDoc(doc(db, 'users', user.uid), patch, { merge: true });
+  return patch;
 }
 
 /* ───────── 畫面：登入前 ───────── */
@@ -133,7 +149,7 @@ function afterOnboard() {
   location.hash = code ? `#/join/${code}` : '#/';
   render();
 }
-const ctx = { S, render, topBar, bindTop, brand, afterOnboard, inviteCode: () => pendingJoin.get(), signOut: () => { stopTrips(); stopAllItems(); stopAllBookings(); stopAllChecklist(); stopAllMoney(); stopAllShop(); return signOut(auth); }, setProfile: p => { S.profile = p; } };
+const ctx = { S, render, topBar, bindTop, brand, afterOnboard, inviteCode: () => pendingJoin.get(), signOut: () => { try { localStorage.removeItem(`lb-coreCheck-${S.user?.uid}`); } catch {} stopTrips(); stopAllItems(); stopAllBookings(); stopAllChecklist(); stopAllMoney(); stopAllShop(); return signOut(auth); }, setProfile: p => { S.profile = p; } };
 ctx.afterProfileSave = makeSync(ctx);
 window.addEventListener('hashchange', () => { resetPlanUI(); render(); });
 
@@ -159,8 +175,19 @@ onAuthStateChanged(auth, async user => {
     const snap = await withTimeout(getDoc(doc(db, 'users', user.uid)));
     if (snap.exists()) {
       S.profile = { id: user.uid, ...snap.data() };
+      let needSync = false;
+      if (!S.profile.coreId && navigator.onLine) {
+        try {
+          const patch = await withTimeout(upgradeToCore(user));
+          if (patch) { S.profile = { ...S.profile, ...patch }; needSync = true; toast(`${S.profile.nickname || ''}，你現在是小夥伴了！`); }
+        } catch (e) { console.warn('檢查小夥伴身分失敗', e); }
+      }
       S.coreId = S.profile.coreId || null;
-      ensureTrips(ctx, onTrips);
+      // 剛升級：旅程清單第一次讀到時，把新的顏色和頭像同步到自己參加的旅程
+      ensureTrips(ctx, () => {
+        if (needSync) { needSync = false; ctx.afterProfileSave().catch(e => console.warn('同步旅程成員資料失敗', e)); }
+        onTrips();
+      });
       const code = pendingJoin.get();
       if (code && !location.hash.startsWith('#/join/')) location.replace(`#/join/${code}`);
     } else {

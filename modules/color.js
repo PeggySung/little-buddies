@@ -52,7 +52,8 @@ export const CORE = [
   { id: 'qi',   name: '阿柒', color: '#E74C3C', colorDark: '#FF7B6E', driver: true,  avatar: 'img/avatars/qi.webp' },
   { id: 'xuan', name: '阿琁', color: '#3B82F6', colorDark: '#6FA8FF', driver: false, avatar: 'img/avatars/xuan.webp' },
   { id: 'yun',  name: '阿筠', color: '#10B981', colorDark: '#38D39F', driver: true,  avatar: 'img/avatars/yun.webp' },
-  { id: 'yue',  name: '鈅寧', color: '#8B5CF6', colorDark: '#B39CFF', driver: false, avatar: 'img/avatars/yue.webp' }
+  { id: 'yue',  name: '鈅寧', color: '#8B5CF6', colorDark: '#B39CFF', driver: false, avatar: 'img/avatars/yue.webp' },
+  { id: 'zhen', name: '阿蓁', color: '#ED8712', colorDark: '#FEB06F', driver: false, avatar: 'img/avatars/zhen.webp' }
 ];
 export const coreById = id => CORE.find(c => c.id === id);
 const CORE_HUES = CORE.map(c => hexToOklch(c.color).h);
