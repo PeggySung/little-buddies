@@ -173,3 +173,29 @@ export function navSlide() {
   pill.classList.add('slid');
   document.querySelectorAll('#main .wrap > :not(header.top)').forEach(el => el.classList.add('tab-in'));
 }
+
+/* ───────── 分類收合／展開動畫 ─────────
+   收合：先把清單高度縮到 0、箭頭轉過去，動畫跑完才重畫。
+   展開：重畫後新的清單從 0 長到原本的高度、淡入，箭頭轉回來。 */
+const noMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+const gapOf = el => parseFloat(getComputedStyle(el.parentElement).rowGap) || 0;
+export function foldOut(btns, done) {
+  const lists = btns.map(b => { b.setAttribute('aria-expanded', 'false'); return b.closest('.sec')?.querySelector('.ck-list'); }).filter(Boolean);
+  if (!lists.length || noMotion()) return done();
+  let left = lists.length;
+  lists.forEach(l => {
+    l.style.overflow = 'hidden';
+    l.animate([{ height: l.offsetHeight + 'px', opacity: 1, marginTop: '0px' }, { height: '0px', opacity: 0, marginTop: -gapOf(l) + 'px' }],
+      { duration: 220, easing: 'cubic-bezier(.4,0,.6,1)', fill: 'forwards' }).finished.then(() => { if (!--left) done(); }, () => { if (!--left) done(); });
+  });
+}
+export function foldIn(btns) {
+  if (noMotion()) return;
+  btns.forEach(b => {
+    b.querySelector('svg')?.animate([{ transform: 'rotate(-90deg)' }, { transform: 'none' }], { duration: 200, easing: 'ease-out' });
+    const l = b.closest('.sec')?.querySelector('.ck-list'); if (!l) return;
+    l.style.overflow = 'hidden';
+    l.animate([{ height: '0px', opacity: 0, marginTop: -gapOf(l) + 'px' }, { height: l.offsetHeight + 'px', opacity: 1, marginTop: '0px' }],
+      { duration: 260, easing: 'cubic-bezier(.2,.8,.25,1)' }).finished.then(() => { l.style.overflow = ''; }, () => {});
+  });
+}
