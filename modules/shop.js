@@ -1,7 +1,7 @@
 // 購物清單：每個人一份自己的清單（同一趟的人都看得到，可以複製別人的項目到自己清單）
 // 照片：清單只放 120px 小縮圖；800px 大圖另外存在 shopImg，點開才下載，下載過就存在手機裡（沒網路也看得到）
 import { doc, collection, onSnapshot, setDoc, updateDoc, getDoc, serverTimestamp, writeBatch } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-import { $, $$, esc, ic, toast, localGet, localSet } from './ui.js';
+import { $, $$, esc, ic, toast, localGet, localSet, tabFrom, tabSlide } from './ui.js';
 import { avatarHTML } from './profile.js';
 import { openSheet, closeSheet } from './plan.js';
 import { addExpenseFrom, ensureMoney, clientsOf, clientDialog, rk, money, toC, evalAmt } from './money.js';
@@ -90,7 +90,7 @@ export function renderShop(ctx, t) {
       ${totAll ? `<div class="sh-tot"><span>預算合計 <b class="num">${money(toC(totAll), cur)}</b></span><span>還沒買 <b class="num">${money(toC(totLeft), cur)}</b></span></div>` : ''}</section>
       <button type="button" class="linkbtn" id="shOff" hidden></button>`
     : `<div class="card empty"><p class="small muted" style="margin:0">${mine ? '還沒有想買的東西。按右下角＋新增，可以拍照、記店名和預算，幫朋友代購的也可以直接標好委託人。' : `${esc(nm(t, who))} 還沒有列清單`}</p></div>`}`;
-  $$('[data-shw]', host).forEach(b => b.addEventListener('click', () => { localSet('shwho:' + t.id, b.dataset.shw); renderShop(ctx, t); }));
+  $$('[data-shw]', host).forEach(b => b.addEventListener('click', () => { if (b.getAttribute('aria-selected') === 'true') return; tabFrom(b); localSet('shwho:' + t.id, b.dataset.shw); renderShop(ctx, t); tabSlide(host); }));
   $$('[data-buy]', host).forEach(b => b.addEventListener('click', () => toggleBought(ctx, t, c.list.find(x => x.id === b.dataset.buy))));
   $$('[data-shed]', host).forEach(b => b.addEventListener('click', () => editShop(ctx, t, c.list.find(x => x.id === b.dataset.shed))));
   $$('[data-shimg]', host).forEach(b => b.addEventListener('click', () => showImg(ctx, t, c.list.find(x => x.id === b.dataset.shimg))));

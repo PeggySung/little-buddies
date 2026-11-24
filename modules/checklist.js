@@ -1,6 +1,6 @@
 // 準備清單：每個人都要做、指定成員、有人帶就好（認領）；分類、範本
 import { doc, collection, onSnapshot, setDoc, updateDoc, deleteDoc, deleteField, serverTimestamp, writeBatch } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-import { $, $$, esc, ic, toast, localGet, localSet } from './ui.js';
+import { $, $$, esc, ic, toast, localGet, localSet, tabFrom, tabSlide } from './ui.js';
 import { avatarHTML } from './profile.js';
 import { openSheet, closeSheet } from './plan.js';
 import { countryBy } from './places.js';
@@ -167,7 +167,7 @@ export function renderChecklist(ctx, t) {
       }).join('')}
     ${list.length ? `<div class="grid2"><button class="btn" id="ckTpl">從範本加入</button><button class="btn" id="ckAdd">${ic.plus}新增項目</button></div>`
       : `<button class="btn full" id="ckAdd">${ic.plus}自己新增項目</button>`}`;
-  $$('[data-view]', host).forEach(b => b.addEventListener('click', () => { localSet('ckview:' + t.id, b.dataset.view); renderChecklist(ctx, t); }));
+  $$('[data-view]', host).forEach(b => b.addEventListener('click', () => { if (b.getAttribute('aria-selected') === 'true') return; tabFrom(b); localSet('ckview:' + t.id, b.dataset.view); renderChecklist(ctx, t); tabSlide(host); }));
   $$('[data-fold]', host).forEach(b => b.addEventListener('click', () => {
     fold[b.dataset.fold] = b.getAttribute('aria-expanded') === 'true'; // true＝收起來
     saveFold(t.id, fold); renderChecklist(ctx, t);

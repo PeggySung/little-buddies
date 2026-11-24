@@ -1,7 +1,7 @@
 // 記帳：每種幣別分開結算（日圓的帳用日圓還、台幣的帳用台幣還，不用匯率）
 // 多人付款、各自金額、旅途中先結清、代購、退稅；有人按「已轉帳」後，那個幣別的帳目就鎖定
 import { doc, collection, onSnapshot, setDoc, updateDoc, deleteDoc, serverTimestamp, runTransaction, getDocs, query, where, arrayUnion, arrayRemove } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-import { $, $$, esc, ic, toast, localGet, localSet, copyText } from './ui.js';
+import { $, $$, esc, ic, toast, localGet, localSet, copyText, tabFrom, tabSlide } from './ui.js';
 import { avatarHTML } from './profile.js';
 import { openSheet, closeSheet, kindIcon } from './plan.js';
 import { CUR_NAME, CURRENCIES, todayIn } from './places.js';
@@ -265,7 +265,7 @@ export function renderMoney(ctx, t) {
   host.innerHTML = `<div class="dayhead"><h2 class="title">記帳</h2></div>
     ${tabs.length > 1 ? `<div class="utabs" role="tablist" aria-label="記帳分頁">${tabs.map(([k, l]) => `<button type="button" role="tab" data-mtab="${k}" aria-selected="${tab === k}">${l}</button>`).join('')}</div>` : ''}
     ${tab === 'settle' ? settleHTML(t, list, c.settle) : tab === 'proxy' ? proxyHTML(t, list, me) : listHTML(t, list, me, solo)}`;
-  $$('[data-mtab]', host).forEach(b => b.addEventListener('click', () => { localSet('mntab:' + t.id, b.dataset.mtab); renderMoney(ctx, t); window.scrollTo(0, 0); }));
+  $$('[data-mtab]', host).forEach(b => b.addEventListener('click', () => { if (b.getAttribute('aria-selected') === 'true') return; tabFrom(b); localSet('mntab:' + t.id, b.dataset.mtab); renderMoney(ctx, t); window.scrollTo(0, 0); tabSlide(host); }));
   $$('[data-ex]', host).forEach(b => b.addEventListener('click', () => editExpense(ctx, t, list.find(e => e.id === b.dataset.ex))));
   $$('[data-mfold]', host).forEach(b => b.addEventListener('click', () => {
     const f = fold.get(t.id); f[b.dataset.mfold] = b.getAttribute('aria-expanded') === 'true'; fold.set(t.id, f); renderMoney(ctx, t);

@@ -129,3 +129,28 @@ class Time24 extends HTMLElement {
   focus() { this._h?.focus(); }
 }
 if (!customElements.get('time-24')) customElements.define('time-24', Time24);
+
+/* ───────── 分頁切換動畫 ─────────
+   畫面是整段重畫的，所以點分頁時先記住舊的選取位置（tabFrom），
+   重畫完再讓底塊／底線從舊位置滑到新位置、內容淡入上浮（tabSlide）。
+   只有自己點分頁才會動，資料同步造成的重畫不會動。 */
+const tabMem = new Map();
+export function tabFrom(btn) {
+  const list = btn.closest('[role="tablist"]'), cur = list && list.querySelector('[aria-selected="true"]');
+  if (cur) tabMem.set(list.getAttribute('aria-label'), { r: cur.getBoundingClientRect(), sl: list.scrollLeft });
+}
+export function tabSlide(root = document) {
+  root.querySelectorAll('[role="tablist"]').forEach(list => {
+    const key = list.getAttribute('aria-label'), m = tabMem.get(key); if (!m) return;
+    tabMem.delete(key);
+    list.scrollLeft = m.sl;
+    const cur = list.querySelector('[aria-selected="true"]'); if (!cur) return;
+    const r = cur.getBoundingClientRect(), dx = m.r.left - r.left;
+    if (Math.abs(dx) < 1) return;
+    cur.style.setProperty('--tx', dx + 'px');
+    cur.style.setProperty('--ts', r.width ? m.r.width / r.width : 1);
+    cur.classList.add('slid');
+    let n = list.nextElementSibling;
+    while (n) { n.classList.add('tab-in'); n = n.nextElementSibling; }
+  });
+}

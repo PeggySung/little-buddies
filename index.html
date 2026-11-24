@@ -50,6 +50,8 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--f-body); -webkit-text-size-adjust: 100%; }
 body { min-height: 100vh; min-height: 100dvh; }
+/* 捲軸位置永遠先留好：內容長短不同時，整頁寬度不變，畫面不會左右跳 */
+html { scrollbar-gutter: stable; }
 button, input, select, textarea { font: inherit; color: inherit; }
 a { color: inherit; }
 .hidden { display: none !important; }
@@ -247,20 +249,24 @@ div.sh-main { cursor: default; }
 .sh-big img { max-width: 100%; max-height: 70dvh; object-fit: contain; display: block; }
 .sh-photo { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .sh-photo img { width: 96px; height: 96px; object-fit: cover; border-radius: 12px; border: 1.5px solid var(--line); }
-.ttabs { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; padding: 3px; height: 44px; box-sizing: border-box; border-radius: 999px; background: #ECE6D9; }
-.ttabs button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border-radius: 999px; border: 0; background: none; color: var(--ink3); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; transition: background .15s, box-shadow .15s, color .15s; }
-.ttabs button svg { width: 17px; height: 17px; }
-.ttabs button[aria-selected="true"] { background: #FFFFFF; color: var(--ink); box-shadow: 0 1px 2px rgba(36,50,74,.10), 0 2px 6px rgba(36,50,74,.06); }
+.ttabs { position: relative; isolation: isolate; display: grid; grid-template-columns: 1fr 1fr; gap: 3px; padding: 3px; height: 44px; box-sizing: border-box; border-radius: 999px; background: #ECE6D9; }
+.ttabs button { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border-radius: 999px; border: 0; background: none; color: var(--ink3); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; transition: color .2s; }
+.ttabs button svg { width: 17px; height: 17px; transition: color .2s; }
+/* 白色底塊畫在 ::before，切換時由 JS 讓它從舊位置滑過來 */
+.ttabs button[aria-selected="true"]::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: #FFFFFF; box-shadow: 0 1px 2px rgba(36,50,74,.10), 0 2px 6px rgba(36,50,74,.06); transform-origin: left center; }
+.ttabs button[aria-selected="true"] { color: var(--ink); }
 .ttabs button[aria-selected="true"] svg { color: #E0A12E; }
 .ttabs button:not([aria-selected="true"]):hover { color: var(--ink2); }
 .ttabs button:focus-visible { outline: 2.5px solid var(--acc); outline-offset: 1px; }
 [data-theme="dark"] .ttabs { background: var(--card); }
-[data-theme="dark"] .ttabs button[aria-selected="true"] { background: #2A3444; box-shadow: none; }
+[data-theme="dark"] .ttabs button[aria-selected="true"]::before { background: #2A3444; box-shadow: none; }
 [data-theme="dark"] .ttabs button[aria-selected="true"] svg { color: var(--pri); }
-.utabs { display: flex; border-bottom: 1.5px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+.utabs { position: relative; display: flex; border-bottom: 1.5px solid var(--line); overflow-x: auto; scrollbar-width: none; }
 .utabs::-webkit-scrollbar { display: none; }
-.utabs button { flex: 1 0 auto; min-height: 46px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 12px; border: 0; border-bottom: 3px solid transparent; margin-bottom: -1.5px; background: none; color: var(--ink3); font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; white-space: nowrap; }
-.utabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--pri); }
+.utabs button { flex: 1 0 auto; min-height: 46px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 12px; border: 0; border-bottom: 3px solid transparent; margin-bottom: -1.5px; position: relative; background: none; color: var(--ink3); font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.utabs button[aria-selected="true"] { color: var(--ink); }
+/* 橘色底線畫在 ::after，切換時由 JS 讓它從舊位置滑過來 */
+.utabs button[aria-selected="true"]::after { content: ""; position: absolute; left: 0; right: 0; bottom: -3px; height: 3px; background: var(--pri); transform-origin: left center; }
 .utabs button:focus-visible { outline: 2.5px solid var(--acc); outline-offset: -3px; border-radius: 8px; }
 .utabs .n { font-family: var(--f-num); font-size: 12px; font-weight: 800; padding: 1px 7px; border-radius: 999px; background: var(--sunk); color: var(--ink3); }
 .utabs button[aria-selected="true"] .n { background: var(--acc-soft); color: var(--sel-ink); }
@@ -452,6 +458,12 @@ input[type=range] { width: 100%; accent-color: var(--acc); }
 #toast { position: fixed; left: 50%; bottom: calc(92px + var(--safe-b)); transform: translate(-50%, 20px); background: var(--ink); color: var(--bg); padding: 10px 18px; border-radius: 999px; font-size: 14px; opacity: 0; pointer-events: none; transition: .2s; z-index: 99; max-width: 90vw; }
 #toast.show { opacity: 1; transform: translate(-50%, 0); }
 .spinner { width: 28px; height: 28px; border-radius: 50%; border: 3px solid var(--line2); border-top-color: var(--acc); animation: spin 0.8s linear infinite; }
+/* ───────── 分頁切換動畫 ───────── */
+@keyframes tabslide { from { transform: translateX(var(--tx, 0)) scaleX(var(--ts, 1)); } to { transform: none; } }
+.ttabs button.slid::before, .utabs button.slid::after { animation: tabslide .28s cubic-bezier(.3,.7,.3,1); }
+@keyframes tabin { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.tab-in { animation: tabin .22s ease-out both; }
+@media (prefers-reduced-motion: reduce) { .ttabs button.slid::before, .utabs button.slid::after, .tab-in { animation: none; } }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2s; } #toast { transition: none; } }
 </style>

@@ -1,7 +1,7 @@
 // 旅程：首頁列表與足跡、開新旅程、旅程頁、邀請碼、加入旅程
 import { doc, collection, query, where, onSnapshot, getDoc, setDoc, updateDoc, deleteDoc, arrayUnion,
   serverTimestamp, Timestamp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-import { $, $$, esc, ic, toast, copyText, localGet, localSet } from './ui.js';
+import { $, $$, esc, ic, toast, copyText, localGet, localSet, tabFrom, tabSlide } from './ui.js';
 import { avatarHTML } from './profile.js';
 import { adjustForPeers } from './color.js';
 import { renderPlan, watchItems, isBusy, exitSort } from './plan.js';
@@ -538,7 +538,7 @@ export function renderTripChecklist(ctx, id) {
     <div id="${seg === 'ck' ? 'ckBody' : 'shBody'}" style="display:flex;flex-direction:column;gap:14px"></div>
   </div><button type="button" class="fab hidden" id="fab" aria-label="新增">${ic.plus}</button>${tabBar(id, 'list')}`;
   ctx.bindTop(); bindTabs();
-  $$('[data-ls]').forEach(b => b.addEventListener('click', () => { if (b.dataset.ls === seg) return; localSet('lsseg:' + id, b.dataset.ls); renderTripChecklist(ctx, id); window.scrollTo(0, 0); }));
+  $$('[data-ls]').forEach(b => b.addEventListener('click', () => { if (b.dataset.ls === seg) return; tabFrom(b); localSet('lsseg:' + id, b.dataset.ls); renderTripChecklist(ctx, id); window.scrollTo(0, 0); tabSlide(); }));
   const again = () => {
     if (isBusy() || location.hash !== `#/trip/${id}/list` || document.querySelector('#sheet')) return;
     const cur = (S.trips || []).find(x => x.id === id); if (!cur) return;
