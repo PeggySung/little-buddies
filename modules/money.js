@@ -749,8 +749,8 @@ function editExpense(ctx, t, e, pre = null) {
           const multi = !x.px && Object.keys(x.who || {}).filter(u => x.who[u] > 0).length > 1;
           return `<div class="rc-line" data-li="${i}">
             <div class="rc-top"><span class="rc-no">${i + 1}</span>
-              <input class="input num rc-price" data-ri="${i}" data-k="price" inputmode="decimal" value="${esc(x.price)}" placeholder="價格" aria-label="第 ${i + 1} 行價格">
               <input class="input rc-name" data-ri="${i}" data-k="name" maxlength="60" value="${esc(x.name || '')}" placeholder="品名（選填）" aria-label="第 ${i + 1} 行品名">
+              <input class="input num rc-price" data-ri="${i}" data-k="price" inputmode="decimal" value="${esc(x.price)}" placeholder="價格" aria-label="第 ${i + 1} 行價格">
               <button type="button" class="iconbtn" data-rmore="${i}" aria-label="第 ${i + 1} 行更多設定" aria-expanded="${!!x.open}">⋯</button></div>
             <div class="rc-who">${people.map(u => `<button type="button" class="rc-chip" data-rw="${i}:${esc(u)}" aria-pressed="${!x.px && x.who?.[u] > 0}" style="--c:${esc(t.members[u].color || '#999')}">${av(t, u, 'xs')}${esc(nm(t, u))}</button>`).join('')}
               <button type="button" class="rc-chip" data-rpx="${i}" aria-pressed="${!!x.px}">🛍️ 代購</button>${x.px ? cliSel(`data-rcl="${i}"`, x.px, 'input chipsel') : ''}</div>
@@ -780,7 +780,7 @@ function editExpense(ctx, t, e, pre = null) {
       $$('[data-rmore]', box).forEach(b => b.addEventListener('click', () => { const x = rc.items[+b.dataset.rmore]; x.open = !x.open; paintRc(); $(`[data-rmore="${b.dataset.rmore}"]`, box)?.focus(); }));
       $$('[data-rflag]', box).forEach(c => c.addEventListener('change', () => { const [i, k] = c.dataset.rflag.split(':'); rc.items[+i][k] = c.checked; paintRcSum(); }));
       $$('[data-rdel]', box).forEach(b => b.addEventListener('click', () => { rc.items.splice(+b.dataset.rdel, 1); if (!rc.items.length) rc.items.push(newLine()); paintRc(); }));
-      $('#rcAdd', box).addEventListener('click', () => { rc.items.push(newLine()); paintRc(); const n = $$('.rc-price', box).pop(); n?.focus(); });
+      $('#rcAdd', box).addEventListener('click', () => { rc.items.push(newLine()); paintRc(); const n = $$('.rc-name', box).pop(); n?.focus(); }); // 新的一行先填品名
       $('#rcEx', box).addEventListener('change', ev => { rc.ex = ev.target.checked; paintRc(); });
       $('#rcRate', box)?.addEventListener('input', ev => { rc.rate = ev.target.value; paintRcSum(); });
       $('#rcLow', box)?.addEventListener('input', ev => { rc.low = ev.target.value; paintRcSum(); });
@@ -876,10 +876,12 @@ function editExpense(ctx, t, e, pre = null) {
         rc.items.push({ k: rk(), name: '', price: '', who: solo ? { [me]: 1 } : {}, px: null, low: false, noDisc: false });
       }
       paintRc(); paintPx(); paintShare(); paintHow(); paintLock();
-      if (rc) $('.rc-price', s)?.focus();
+      if (rc) $('.rc-name', s)?.focus();
     });
     paintPx(); paintRf(); paintRc(); all();
     if (isNew && !pre) setTimeout(() => $('#eName', s).focus(), 50);
+    // 編輯舊的記帳：不要自動把焦點放在第一個欄位（「其他」幣別），不然它會亮黃框，看起來像被選了
+    else setTimeout(() => { if (document.activeElement?.id === 'eCurOther') { s.tabIndex = -1; s.focus({ preventScroll: true }); } }, 0); // 共用的彈出視窗會在這之後才對焦，所以晚一點再改
     if (pre?.hint) $('#eErr', s).insertAdjacentHTML('beforebegin', `<p class="tiny faint" style="margin:0">${esc(pre.hint)}</p>`);
 
     $('#eSave', s).addEventListener('click', () => {
