@@ -215,7 +215,6 @@ export function renderPlan(ctx, t, sortDay = null) {
         .sort((a, b) => sortIt(a.x || { start: a.e.start, order: -1 }, b.x || { start: b.e.start, order: -1 }))
         .map(r => (r.x ? itemHTML(r.x, marks) : evHTML(t, r.e))).join('')}</div>`
     : `<div class="card empty"><p class="small muted" style="margin:0">${day === 0 ? '還沒有備案。可以放「有空再去」或「下雨時的替代方案」。' : '這天還沒有行程。'}</p></div>`;
-  const tzNote = (() => { try { return new Intl.DateTimeFormat('zh-TW', { timeZone: t.tz, timeZoneName: 'short' }).formatToParts(new Date()).find(p => p.type === 'timeZoneName')?.value || t.tz; } catch { return t.tz; } })();
   $('#planBody').innerHTML = `
     <nav class="daybar" id="daybar" aria-label="選擇日期">
       ${days.map(d => `<button class="daychip ${st === 'now' && todayDay === d.d ? 'today' : ''}" aria-pressed="${day === d.d}" data-day="${d.d}">
@@ -225,7 +224,7 @@ export function renderPlan(ctx, t, sortDay = null) {
     <div class="dayhead"><h2 class="title">${day === 0 ? '備案' : `Day ${day}`}</h2>
       <span class="small muted" style="flex:1">${dinfo ? '' : '有空檔或天氣不好時的選擇'}</span>
       ${items.length >= 2 ? `<button class="btn sm" id="roStart">${ic.sort}調整順序</button>` : ''}</div>
-    ${dinfo ? `<div class="dayrow"><div class="wxrow" id="wxRow"></div><span class="tiny faint tznote">當地時間 ${esc(tzNote)}</span></div><div class="wxcard" id="wxCard" hidden></div>` : ''}
+    ${dinfo ? `<div class="dayrow"><div class="wxrow" id="wxRow"></div></div><div class="wxcard" id="wxCard" hidden></div>` : ''}
     ${body}
     <button class="btn full" id="addIt">${ic.plus}新增${day === 0 ? '備案' : '行程'}</button>`;
   $('#daybar').addEventListener('click', e => {

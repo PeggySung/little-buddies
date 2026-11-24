@@ -508,12 +508,27 @@ html.wxbg #main { position: relative; z-index: 1; }
 [data-theme="dark"] .p-dusk { background: linear-gradient(180deg, #5C3034 0%, #33263A 45%, #141824 80%); }
 [data-theme="dark"] .p-night { background: linear-gradient(180deg, #070B16 0%, #0E1424 50%, #121821 100%); }
 .wb-tint { opacity: 0; transition: opacity 1.2s ease, background 1.2s ease; }
-#wxbg.wx-cloudy .wb-tint, #wxbg.wx-rain .wb-tint, #wxbg.wx-mist .wb-tint { opacity: 1; background: linear-gradient(180deg, rgba(120,130,145,.38), rgba(160,165,170,.12) 70%, rgba(0,0,0,0)); }
-#wxbg.wx-storm .wb-tint { opacity: 1; background: linear-gradient(180deg, rgba(70,78,95,.55), rgba(120,125,135,.2) 70%, rgba(0,0,0,0)); }
-#wxbg.wx-snow .wb-tint { opacity: 1; background: linear-gradient(180deg, rgba(205,220,235,.55), rgba(235,240,245,.25) 70%, rgba(0,0,0,0)); }
-[data-theme="dark"] #wxbg.wx-cloudy .wb-tint, [data-theme="dark"] #wxbg.wx-rain .wb-tint, [data-theme="dark"] #wxbg.wx-mist .wb-tint { background: rgba(40,46,56,.35); }
-[data-theme="dark"] #wxbg.wx-storm .wb-tint { background: rgba(20,24,32,.45); }
-[data-theme="dark"] #wxbg.wx-snow .wb-tint { background: rgba(120,140,170,.18); }
+/* 淺色模式：陰天、雨天、霧天、雷雨、下雪各有自己的天空漸層（不再疊灰色，顏色才不會髒） */
+html:not([data-theme="dark"]) #wxbg.wx-cloudy .p-dawn, html:not([data-theme="dark"]) #wxbg.wx-rain .p-dawn { background: linear-gradient(180deg, #E6D6D0 0%, #EEE6E1 38%, #F5F2EE 75%); }
+html:not([data-theme="dark"]) #wxbg.wx-cloudy .p-day, html:not([data-theme="dark"]) #wxbg.wx-rain .p-day { background: linear-gradient(180deg, #CFDCE5 0%, #E3E9ED 38%, #F4F3EF 75%); }
+html:not([data-theme="dark"]) #wxbg.wx-cloudy .p-dusk, html:not([data-theme="dark"]) #wxbg.wx-rain .p-dusk { background: linear-gradient(180deg, #DCC9CC 0%, #E8DDE0 38%, #F3EEEC 75%); }
+html:not([data-theme="dark"]) #wxbg.wx-cloudy .p-night, html:not([data-theme="dark"]) #wxbg.wx-rain .p-night { background: linear-gradient(180deg, #BCC3CF 0%, #D5D9E0 40%, #EDECEA 80%); }
+html:not([data-theme="dark"]) #wxbg.wx-mist .p-dawn { background: linear-gradient(180deg, #EFE6E2 0%, #F4F0EC 40%, #F7F5F1 75%); }
+html:not([data-theme="dark"]) #wxbg.wx-mist .p-day { background: linear-gradient(180deg, #E3E9EC 0%, #EEF1F2 40%, #F7F6F3 75%); }
+html:not([data-theme="dark"]) #wxbg.wx-mist .p-dusk { background: linear-gradient(180deg, #EBE2E2 0%, #F2EDEC 40%, #F7F4F1 75%); }
+html:not([data-theme="dark"]) #wxbg.wx-mist .p-night { background: linear-gradient(180deg, #D3D7DE 0%, #E3E5E8 40%, #F1F0EE 80%); }
+html:not([data-theme="dark"]) #wxbg.wx-storm .p-dawn { background: linear-gradient(180deg, #BFB3B6 0%, #D9D2D3 40%, #F1EEEB 80%); }
+html:not([data-theme="dark"]) #wxbg.wx-storm .p-day { background: linear-gradient(180deg, #A9B8C6 0%, #CDD6DD 40%, #F0F0ED 80%); }
+html:not([data-theme="dark"]) #wxbg.wx-storm .p-dusk { background: linear-gradient(180deg, #B7A9B0 0%, #D5CCD0 40%, #F0ECEA 80%); }
+html:not([data-theme="dark"]) #wxbg.wx-storm .p-night { background: linear-gradient(180deg, #A3ABBC 0%, #C6CBD5 42%, #EAE9E8 85%); }
+html:not([data-theme="dark"]) #wxbg.wx-snow .p-dawn { background: linear-gradient(180deg, #EADDE0 0%, #F1ECEE 38%, #F7F6F3 75%); }
+html:not([data-theme="dark"]) #wxbg.wx-snow .p-day { background: linear-gradient(180deg, #D6E6F0 0%, #E9F1F5 38%, #F7F7F4 75%); }
+html:not([data-theme="dark"]) #wxbg.wx-snow .p-dusk { background: linear-gradient(180deg, #E2D4DC 0%, #EDE6EA 38%, #F6F3F1 75%); }
+html:not([data-theme="dark"]) #wxbg.wx-snow .p-night { background: linear-gradient(180deg, #C7CFDD 0%, #DDE2EA 40%, #F1F1F0 80%); }
+/* 深色模式：維持原本的做法，疊一層深色色調 */
+[data-theme="dark"] #wxbg.wx-cloudy .wb-tint, [data-theme="dark"] #wxbg.wx-rain .wb-tint, [data-theme="dark"] #wxbg.wx-mist .wb-tint { opacity: 1; background: rgba(40,46,56,.35); }
+[data-theme="dark"] #wxbg.wx-storm .wb-tint { opacity: 1; background: rgba(20,24,32,.45); }
+[data-theme="dark"] #wxbg.wx-snow .wb-tint { opacity: 1; background: rgba(120,140,170,.18); }
 .wb-deco { top: calc(var(--safe-t) - 40px); right: calc(max(0px, 50vw - 260px) - 52px); width: 170px; height: 170px; opacity: 0; transition: opacity .6s ease; }
 .wb-fall { opacity: 0; transition: opacity .8s ease; }
 #wxbg.anim .wb-deco { opacity: .82; }
@@ -529,7 +544,6 @@ html.wxbg #main { position: relative; z-index: 1; }
 
 /* 行程頁：天氣小卡（日出日落、潮汐） */
 .dayrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: -8px; } /* 第二行：天氣小卡＋當地時間 */
-.dayrow .tznote { flex: none; white-space: nowrap; }
 .wxrow { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .wxchip { display: inline-flex; align-items: center; gap: 0; max-width: 100%; min-width: 0; min-height: 36px; padding: 4px 12px; border-radius: 999px; background: var(--card); border: 1.5px solid var(--line); color: var(--ink); font: inherit; font-size: 13px; font-weight: 700; box-shadow: var(--shadow); cursor: pointer; }
 .wxplace { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* 城市名太長時用「…」省略，不撐開畫面 */
