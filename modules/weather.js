@@ -207,12 +207,11 @@ export function mountDayWx(t, dinfo) {
     const txt = w ? `${esc(w.n)} <span class="num">${Math.round(fd.max)}°</span><span class="faint">/</span><span class="num">${Math.round(fd.min)}°</span>`
       : (d.f ? '日出日落・潮汐' : '天氣暫時讀不到');
     const open = openFor === t.id;
-    row.innerHTML = `<button class="wxchip" id="wxBtn" aria-expanded="${open}" aria-controls="wxCard">${place}<span class="wxinfo">・${txt}</span>${chevron}</button>
-      ${!w && d.f ? '<span class="tiny faint">出發前 16 天內才有天氣預報</span>' : ''}`;
+    row.innerHTML = `<button class="wxchip" id="wxBtn" aria-expanded="${open}" aria-controls="wxCard">${place}<span class="wxinfo">・${txt}</span>${chevron}</button>`;
     $('#wxBtn').addEventListener('click', () => { openFor = openFor === t.id ? null : t.id; draw(); });
     const card = $('#wxCard');
     card.hidden = !open;
-    if (open) card.innerHTML = cardHTML(d, dinfo.date, t.tz);
+    if (open) card.innerHTML = (!w && d.f ? '<p class="tiny faint" style="margin:0">出發前 16 天內才有天氣預報，現在先顯示日出日落和潮汐。</p>' : '') + cardHTML(d, dinfo.date, t.tz);
   };
   draw();
   if (m.p) m.p.then(draw);
