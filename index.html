@@ -314,7 +314,7 @@ textarea.input { min-height: 84px; padding: 10px 14px; line-height: 1.6; resize:
 .daychip span { font-size: 11px; }
 .daychip[aria-pressed="true"] { background: var(--acc-soft); border-color: var(--acc); color: var(--sel-ink); }
 .daychip.today:not([aria-pressed="true"]) { border-style: dashed; border-color: var(--acc); }
-.dayhead { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.dayhead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .dayhead h2 { font-size: 22px; }
 .timeline { display: flex; flex-direction: column; }
 .it { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 10px; position: relative; padding-bottom: 12px; }
@@ -543,16 +543,16 @@ html:not([data-theme="dark"]) #wxbg.wx-snow .p-night { background: linear-gradie
 @media (prefers-reduced-motion: reduce) { .wb-sky i, .wb-tint { transition: none; } #wxbg .wb-fog, #wxbg .wb-flash { animation: none !important; } }
 
 /* 行程頁：天氣小卡（日出日落、潮汐） */
-.dayrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: -8px; } /* 第二行：天氣小卡＋當地時間 */
-.wxrow { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.wxchip { display: inline-flex; align-items: center; gap: 0; max-width: 100%; min-width: 0; min-height: 36px; padding: 4px 12px; border-radius: 999px; background: var(--card); border: 1.5px solid var(--line); color: var(--ink); font: inherit; font-size: 13px; font-weight: 700; box-shadow: var(--shadow); cursor: pointer; }
-.wxplace { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* 城市名太長時用「…」省略，不撐開畫面 */
-.wxinfo { flex: none; white-space: nowrap; }
-.wxchip svg { flex: none; margin-left: 6px; }
-.wxchip.off { cursor: default; box-shadow: none; color: var(--ink2); font-weight: 500; }
-.wxchip .num { font-family: var(--f-num); font-weight: 800; }
-.wxchip svg { transition: transform .2s; }
-.wxchip[aria-expanded="true"] svg { transform: rotate(180deg); }
+.wxrow { flex: 1; min-width: 0; display: flex; align-items: center; } /* 跟 Day 1 同一行的天氣小字 */
+.wxchip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-width: 0; min-height: 32px; padding: 2px 6px; margin-left: -2px; border: 0; border-radius: 8px; background: none; color: var(--ink3); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; }
+.wxchip:hover { background: var(--sunk); }
+.wxchip.off { cursor: default; }
+.wxchip.off:hover { background: none; }
+.wxinfo { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wxchip .num { font-family: var(--f-num); font-weight: 700; }
+.wxchip svg { flex: none; }
+.wxchip > svg:last-child { opacity: .7; transition: transform .2s; }
+.wxchip[aria-expanded="true"] > svg:last-child { transform: rotate(180deg); }
 .wxchip:focus-visible { outline: 2.5px solid var(--acc); outline-offset: 2px; }
 .wxcard[hidden] { display: none; }
 .wxcard { background: var(--card); border: 1.5px solid var(--line); border-radius: var(--r-card); box-shadow: var(--shadow); padding: 14px; display: flex; flex-direction: column; gap: 12px; margin-top: -6px; }

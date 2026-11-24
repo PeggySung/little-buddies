@@ -192,6 +192,18 @@ const tideAt = (curve, m) => { const h = Math.max(0, Math.min(24, m / 60)), i = 
 
 /* ───────── 行程頁：天氣小卡 ───────── */
 let openFor = null; // 展開中的旅程 id（重畫時保持展開）
+// 天氣小圖示（線條，跟 app 其他圖示同一種粗細）
+const WX_SVG = {
+  sunny: '<circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4"/>',
+  pcloud: '<path d="M9 4.5v1.2M4.2 9.3h1.2M5.6 5.9l.9.9M12.4 5.9l-.9.9"/><path d="M6.6 11.6A3 3 0 1 1 11.8 8.6"/><path d="M8 19h9a3.5 3.5 0 0 0 .4-7 5 5 0 0 0-9.6 1.4A2.8 2.8 0 0 0 8 19z"/>',
+  cloudy: '<path d="M7 18.5h10a4 4 0 0 0 .5-7.97A6 6 0 0 0 6.1 11.6 3.5 3.5 0 0 0 7 18.5z"/>',
+  rain: '<path d="M7 14.5h10a3.5 3.5 0 0 0 .4-7A5.5 5.5 0 0 0 6.6 8.6 3 3 0 0 0 7 14.5z"/><path d="M8.5 17.5l-1 2.5M12.5 17.5l-1 2.5M16.5 17.5l-1 2.5"/>',
+  storm: '<path d="M7 14.5h10a3.5 3.5 0 0 0 .4-7A5.5 5.5 0 0 0 6.6 8.6 3 3 0 0 0 7 14.5z"/><path d="M12.5 15.5l-2 3h3l-2 3"/>',
+  snow: '<path d="M7 14.5h10a3.5 3.5 0 0 0 .4-7A5.5 5.5 0 0 0 6.6 8.6 3 3 0 0 0 7 14.5z"/><path d="M8.5 18v.01M12 19.5v.01M15.5 18v.01M10 21v.01M14 21v.01"/>',
+  mist: '<path d="M4 9h12M6 13h14M4 17h11"/>',
+  sunrise: '<path d="M3 17.5h18M7 17.5a5 5 0 0 1 10 0M12 4.5v4M9.5 7 12 4.5 14.5 7"/>'
+};
+const wxIcon = k => `<svg class="wxi" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${WX_SVG[k] || WX_SVG.cloudy}</svg>`;
 const chevron = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 4.5l3 3 3-3"/></svg>';
 export function mountDayWx(t, dinfo) {
   const row = $('#wxRow'); if (!row || !dinfo) return;
@@ -200,14 +212,14 @@ export function mountDayWx(t, dinfo) {
     if (!row.isConnected) return;
     const d = m.data, pl = m.pl || placeOf(t);
     if (!pl) { row.innerHTML = ''; return; }
-    const place = `<span class="wxplace">${esc(pl.label)}</span>`;
-    if (!d) { row.innerHTML = `<span class="wxchip off">${place}<span class="wxinfo">・讀取天氣中…</span></span>`; return; }
-    if (!d.g) { row.innerHTML = `<span class="wxchip off"><span class="wxinfo">找不到「</span>${place}<span class="wxinfo">」的位置，看不到天氣</span></span>`; return; }
+    // 跟 Day 1 同一行的灰色小字：天氣圖示＋天氣＋高低溫（城市名稱在頁面最上面已經有了）
+    if (!d) { row.innerHTML = '<span class="wxchip off"><span class="wxinfo">天氣讀取中…</span></span>'; return; }
+    if (!d.g) { row.innerHTML = `<span class="wxchip off" title="找不到「${esc(pl.label)}」的位置"><span class="wxinfo">看不到天氣</span></span>`; return; }
     const fd = d.f?.days?.[dinfo.date], w = fd ? wmo(fd.code) : null;
-    const txt = w ? `${esc(w.n)} <span class="num">${Math.round(fd.max)}°</span><span class="faint">/</span><span class="num">${Math.round(fd.min)}°</span>`
-      : (d.f ? '日出日落・潮汐' : '天氣暫時讀不到');
+    const txt = w ? `${esc(w.n)} <span class="num">${Math.round(fd.max)}°</span>/<span class="num">${Math.round(fd.min)}°</span>`
+      : (d.f ? '日出日落' : '天氣暫時讀不到');
     const open = openFor === t.id;
-    row.innerHTML = `<button class="wxchip" id="wxBtn" aria-expanded="${open}" aria-controls="wxCard">${place}<span class="wxinfo">・${txt}</span>${chevron}</button>`;
+    row.innerHTML = `<button class="wxchip" id="wxBtn" aria-expanded="${open}" aria-controls="wxCard" title="${esc(pl.label)}的天氣">${wxIcon(w ? w.k : 'sunrise')}<span class="wxinfo">${txt}</span>${chevron}</button>`;
     $('#wxBtn').addEventListener('click', () => { openFor = openFor === t.id ? null : t.id; draw(); });
     const card = $('#wxCard');
     card.hidden = !open;

@@ -222,9 +222,9 @@ export function renderPlan(ctx, t, sortDay = null) {
       <button class="daychip" aria-pressed="${day === 0}" data-day="0"><b>備案</b><span>口袋名單</span></button>
     </nav>
     <div class="dayhead"><h2 class="title">${day === 0 ? '備案' : `Day ${day}`}</h2>
-      <span class="small muted" style="flex:1">${dinfo ? '' : '有空檔或天氣不好時的選擇'}</span>
+      ${dinfo ? '<span class="wxrow" id="wxRow"></span>' : '<span class="small muted" style="flex:1">有空檔或天氣不好時的選擇</span>'}
       ${items.length >= 2 ? `<button class="btn sm" id="roStart">${ic.sort}調整順序</button>` : ''}</div>
-    ${dinfo ? `<div class="dayrow"><div class="wxrow" id="wxRow"></div></div><div class="wxcard" id="wxCard" hidden></div>` : ''}
+    ${dinfo ? '<div class="wxcard" id="wxCard" hidden></div>' : ''}
     ${body}
     <button class="btn full" id="addIt">${ic.plus}新增${day === 0 ? '備案' : '行程'}</button>`;
   $('#daybar').addEventListener('click', e => {
