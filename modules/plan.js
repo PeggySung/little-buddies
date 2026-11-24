@@ -108,7 +108,7 @@ function renderReorder(ctx, t, days, day) {
     const over = rs.some(r => r.over);
     $('#planBody').innerHTML = `
       <div class="dayhead"><h2 class="title">${day === 0 ? '備案' : `Day ${day}`}・調整順序</h2></div>
-      <p class="small muted" style="margin:0">按住左邊的 ${ic.grip} 拖曳，或用右邊的箭頭上下移動。${day === 0 ? '' : '時間會自動重算：第一個行程的開始時間不變，後面依序接上，每個行程的停留時間不變。'}</p>
+      <p class="small muted" style="margin:0">長按項目（或按住左邊的 ${ic.grip}）拖曳，或用右邊的箭頭上下移動。${day === 0 ? '' : '時間會自動重算：第一個行程的開始時間不變，後面依序接上，每個行程的停留時間不變。'}</p>
       <ol class="ro-list" id="roList">${rs.map((r, i) => `<li class="ro-item" data-id="${esc(r.id)}">
           <span class="ro-grip" aria-hidden="true">${ic.grip}</span>
           <span class="ro-time num">${esc(r.nStart || '—')}${r.nEnd ? `<small>${esc(r.nEnd)}</small>` : ''}</span>
@@ -137,38 +137,85 @@ function renderReorder(ctx, t, days, day) {
       });
       toast('順序已更新'); exitSort(t.id);
     });
-    // 拖曳（滑鼠、手指都可以）
+    // 拖曳：手機長按項目（或按住左邊的 ⠿）後，項目浮起來跟著手指移動，其他項目滑開讓位；滑鼠按住 ⠿ 拖曳
     const list = $('#roList');
-    $$('.ro-grip', list).forEach(g => g.addEventListener('pointerdown', e => {
-      const li = g.closest('.ro-item'); e.preventDefault();
-      // 拖曳時元素會在清單裡移動，指標捕捉會失效，所以改在整個視窗監聽
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let drag = null;
+    const kids = () => [...list.children].filter(x => x !== drag.li);
+    const idsNow = () => kids().map(x => (x === drag.ph ? drag.li.dataset.id : x.dataset.id));
+    const preview = () => { // 即時預覽新的時間
+      recompute(idsNow().map(id => byId[id])).forEach(r => {
+        const tEl = $(`.ro-item[data-id="${CSS.escape(r.id)}"] .ro-time`, list);
+        if (tEl) tEl.innerHTML = `${esc(r.nStart || '—')}${r.nEnd ? `<small>${esc(r.nEnd)}</small>` : ''}`;
+      });
+    };
+    const place = () => { // 浮起來的項目跟著手指；空位移到手指所在的位置
+      const { li, ph } = drag;
+      li.style.top = (drag.y - drag.dy) + 'px';
+      const mid = drag.y - drag.dy + li.offsetHeight / 2;
+      const base = list.getBoundingClientRect().top - list.offsetTop; // 用 offsetTop 量位置，不受讓位動畫影響
+      const others = kids().filter(x => x !== ph);
+      let idx = others.findIndex(x => mid < base + x.offsetTop + x.offsetHeight / 2);
+      if (idx < 0) idx = others.length;
+      if (idx === kids().indexOf(ph)) return;
+      const before = new Map(others.map(x => [x, x.offsetTop]));
+      idx < others.length ? list.insertBefore(ph, others[idx]) : list.appendChild(ph);
+      if (!reduce) others.forEach(x => { const d = before.get(x) - x.offsetTop; if (d) x.animate([{ transform: `translateY(${d}px)` }, { transform: 'none' }], { duration: 180, easing: 'cubic-bezier(.2,.8,.2,1)' }); });
+      preview();
+    };
+    const tick = () => { // 拖到畫面上下邊緣時自動捲動
+      if (!drag) return;
+      const dy = drag.y < 90 ? -8 : drag.y > innerHeight - 130 ? 8 : 0;
+      if (dy) { scrollBy(0, dy); place(); }
+      drag.raf = requestAnimationFrame(tick);
+    };
+    const start = (li, y) => {
+      const r = li.getBoundingClientRect();
+      const ph = document.createElement('li'); ph.className = 'ro-ph'; ph.setAttribute('aria-hidden', 'true'); ph.style.height = r.height + 'px';
+      li.after(ph);
+      Object.assign(li.style, { position: 'fixed', left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', zIndex: 60 });
       li.classList.add('dragging');
-      let lastY = e.clientY, raf = 0;
-      const move = ev => {
-        lastY = ev.clientY;
-        const others = $$('.ro-item', list).filter(x => x !== li);
-        const target = others.find(x => { const r = x.getBoundingClientRect(); return lastY < r.top + r.height / 2; });
-        if (target) { if (li.nextElementSibling !== target) list.insertBefore(li, target); }
-        else if (list.lastElementChild !== li) list.appendChild(li);
-        // 拖到畫面邊緣時自動捲動
-        cancelAnimationFrame(raf);
-        const edge = () => { const dy = lastY < 90 ? -8 : lastY > innerHeight - 130 ? 8 : 0; if (dy) { scrollBy(0, dy); raf = requestAnimationFrame(edge); } };
-        edge();
-        // 即時預覽新的時間
-        const ids = $$('.ro-item', list).map(x => x.dataset.id);
-        recompute(ids.map(id => byId[id])).forEach(r => {
-          const tEl = $(`.ro-item[data-id="${CSS.escape(r.id)}"] .ro-time`, list);
-          if (tEl) tEl.innerHTML = `${esc(r.nStart || '—')}${r.nEnd ? `<small>${esc(r.nEnd)}</small>` : ''}`;
-        });
-      };
-      const up = () => {
-        cancelAnimationFrame(raf);
-        removeEventListener('pointermove', move); removeEventListener('pointerup', up); removeEventListener('pointercancel', up);
-        reorder.ids = $$('.ro-item', list).map(x => x.dataset.id);
-        draw();
-      };
-      addEventListener('pointermove', move); addEventListener('pointerup', up); addEventListener('pointercancel', up);
+      drag = { li, ph, dy: y - r.top, y, raf: 0 };
+      try { navigator.vibrate?.(12); } catch {}
+      tick();
+    };
+    const move = y => { if (!drag) return; drag.y = y; place(); };
+    const end = () => {
+      if (!drag) return;
+      cancelAnimationFrame(drag.raf);
+      const { li, ph } = drag, ids = idsNow(), r = ph.getBoundingClientRect();
+      drag = null;
+      reorder.ids = ids;
+      if (reduce) return draw();
+      li.style.transition = 'top .16s ease-out, transform .16s ease-out, box-shadow .16s';
+      li.style.top = r.top + 'px'; li.classList.remove('dragging'); li.classList.add('dropping');
+      setTimeout(draw, 170);
+    };
+    // 滑鼠：按住 ⠿ 拖曳
+    $$('.ro-grip', list).forEach(g => g.addEventListener('pointerdown', e => {
+      if (e.pointerType === 'touch') return;
+      e.preventDefault(); start(g.closest('.ro-item'), e.clientY);
+      const mv = ev => move(ev.clientY);
+      const up = () => { removeEventListener('pointermove', mv); removeEventListener('pointerup', up); removeEventListener('pointercancel', up); end(); };
+      addEventListener('pointermove', mv); addEventListener('pointerup', up); addEventListener('pointercancel', up);
     }));
+    // 手指：按住 ⠿ 馬上拿起來；按住項目其他地方 0.35 秒拿起來（還沒拿起來就移動，當成捲動畫面）
+    list.addEventListener('contextmenu', e => e.preventDefault());
+    $$('.ro-item', list).forEach(li => li.addEventListener('touchstart', e => {
+      if (drag || e.touches.length > 1 || e.target.closest('button')) return;
+      const t0 = e.touches[0], sx = t0.clientX, sy = t0.clientY;
+      let y = sy, timer = 0;
+      const tm = ev => {
+        const t = ev.touches[0]; y = t.clientY;
+        if (drag) { ev.preventDefault(); move(y); return; }
+        if (Math.hypot(t.clientX - sx, t.clientY - sy) > 8) cleanup(); // 是在捲動
+      };
+      const te = () => { cleanup(); end(); };
+      const cleanup = () => { clearTimeout(timer); removeEventListener('touchmove', tm); removeEventListener('touchend', te); removeEventListener('touchcancel', te); };
+      addEventListener('touchmove', tm, { passive: false }); addEventListener('touchend', te); addEventListener('touchcancel', te);
+      if (e.target.closest('.ro-grip')) { e.preventDefault(); start(li, y); }
+      else timer = setTimeout(() => start(li, y), 350);
+    }, { passive: false }));
   };
   draw();
 }

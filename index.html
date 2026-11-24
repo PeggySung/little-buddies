@@ -341,7 +341,11 @@ textarea.input { min-height: 84px; padding: 10px 14px; line-height: 1.6; resize:
 /* 調整順序 */
 .ro-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .ro-item { display: flex; align-items: center; gap: 8px; background: var(--card); border: 1.5px solid var(--line); border-radius: var(--r-btn); padding: 4px 4px 4px 0; user-select: none; -webkit-user-select: none; }
-.ro-item.dragging { border: 2px solid var(--acc); box-shadow: var(--shadow); opacity: .95; }
+.ro-item { -webkit-touch-callout: none; }
+.ro-item.dragging { border: 2px solid var(--acc); box-shadow: 0 14px 30px rgba(36,50,74,.22), 0 3px 8px rgba(36,50,74,.10); transform: scale(1.03); transition: transform .12s ease-out, box-shadow .12s; }
+.ro-item.dropping { border: 2px solid var(--acc); }
+.ro-ph { border: 2px dashed var(--line2); border-radius: var(--r-btn); background: color-mix(in srgb, var(--card) 40%, transparent); } /* 拖曳時原本位置的虛線空位 */
+[data-theme="dark"] .ro-item.dragging { box-shadow: 0 14px 30px rgba(0,0,0,.5); }
 .ro-grip { width: 44px; min-height: 52px; display: flex; align-items: center; justify-content: center; color: var(--ink3); cursor: grab; touch-action: none; flex-shrink: 0; }
 .ro-item.dragging .ro-grip { cursor: grabbing; color: var(--ink); }
 .ro-time { width: 48px; flex-shrink: 0; display: flex; flex-direction: column; font-weight: 800; font-size: 15px; }
