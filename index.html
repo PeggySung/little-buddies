@@ -340,7 +340,8 @@ textarea.input { min-height: 84px; padding: 10px 14px; line-height: 1.6; resize:
 
 /* 調整順序 */
 .ro-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-.ro-item { display: flex; align-items: center; gap: 8px; background: var(--card); border: 1.5px solid var(--line); border-radius: var(--r-btn); padding: 4px 4px 4px 0; user-select: none; -webkit-user-select: none; }
+.ro-item { display: flex; align-items: center; gap: 8px; background: var(--card); border: 1.5px solid var(--line); border-radius: var(--r-btn); padding: 4px 14px 4px 0; user-select: none; -webkit-user-select: none; }
+.ro-item:focus-visible { outline: 2.5px solid var(--acc); outline-offset: 2px; }
 .ro-item { -webkit-touch-callout: none; }
 .ro-item.dragging { border: 2px solid var(--acc); box-shadow: 0 14px 30px rgba(36,50,74,.22), 0 3px 8px rgba(36,50,74,.10); transform: scale(1.03); transition: transform .12s ease-out, box-shadow .12s; }
 .ro-item.dropping { border: 2px solid var(--acc); }
@@ -352,7 +353,6 @@ textarea.input { min-height: 84px; padding: 10px 14px; line-height: 1.6; resize:
 .ro-time small { font-size: 11px; color: var(--ink3); font-weight: 700; }
 .ro-title { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .ro-title b { font-size: 14.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ro-btns { display: flex; }
 .iconbtn:disabled { opacity: .3; cursor: default; }
 /* 交通住宿 */
 .bk { gap: 12px; }

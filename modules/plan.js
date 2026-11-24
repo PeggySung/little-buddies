@@ -108,23 +108,26 @@ function renderReorder(ctx, t, days, day) {
     const over = rs.some(r => r.over);
     $('#planBody').innerHTML = `
       <div class="dayhead"><h2 class="title">${day === 0 ? '備案' : `Day ${day}`}・調整順序</h2></div>
-      <p class="small muted" style="margin:0">長按項目（或按住左邊的 ${ic.grip}）拖曳，或用右邊的箭頭上下移動。${day === 0 ? '' : '時間會自動重算：第一個行程的開始時間不變，後面依序接上，每個行程的停留時間不變。'}</p>
-      <ol class="ro-list" id="roList">${rs.map((r, i) => `<li class="ro-item" data-id="${esc(r.id)}">
+      <p class="small muted" style="margin:0">長按項目（或按住左邊的 ${ic.grip}）拖曳到想要的位置。${day === 0 ? '' : '時間會自動重算：第一個行程的開始時間不變，後面依序接上，每個行程的停留時間不變。'}</p>
+      <ol class="ro-list" id="roList">${rs.map((r, i) => `<li class="ro-item" data-id="${esc(r.id)}" tabindex="0" aria-label="第 ${i + 1} 個：${esc(r.title)}。用鍵盤的上下鍵移動">
           <span class="ro-grip" aria-hidden="true">${ic.grip}</span>
           <span class="ro-time num">${esc(r.nStart || '—')}${r.nEnd ? `<small>${esc(r.nEnd)}</small>` : ''}</span>
           ${kindImg(r, 'sm')}
           <span class="ro-title"><b>${esc(r.title)}</b><small class="tiny faint">${esc(KINDS[kindOf(r)].label)}${durOf(r) ? `・${durOf(r)} 分` : ''}</small></span>
-          <span class="ro-btns">
-            <button class="iconbtn" data-up="${i}" aria-label="把「${esc(r.title)}」往上移" ${i === 0 ? 'disabled' : ''}>${ic.up}</button>
-            <button class="iconbtn" data-down="${i}" aria-label="把「${esc(r.title)}」往下移" ${i === rs.length - 1 ? 'disabled' : ''}>${ic.down}</button>
-          </span></li>`).join('')}</ol>
+          </li>`).join('')}</ol>
       ${over ? '<p class="warn" role="alert">重算後有行程超過午夜 24:00，請調整順序或縮短停留時間。</p>' : ''}
       <div class="grid2"><button class="btn" id="roCancel">取消</button><button class="btn pri" id="roSave" ${over ? 'disabled' : ''}>完成</button></div>`;
     bind();
   };
   const bind = () => {
-    $$('[data-up]').forEach(b => b.addEventListener('click', () => { const i = +b.dataset.up; [reorder.ids[i - 1], reorder.ids[i]] = [reorder.ids[i], reorder.ids[i - 1]]; draw(); $(`[data-up="${i - 1}"]`)?.focus() || $(`[data-down="${i - 1}"]`)?.focus(); }));
-    $$('[data-down]').forEach(b => b.addEventListener('click', () => { const i = +b.dataset.down; [reorder.ids[i + 1], reorder.ids[i]] = [reorder.ids[i], reorder.ids[i + 1]]; draw(); $(`[data-down="${i + 1}"]`)?.focus() || $(`[data-up="${i + 1}"]`)?.focus(); }));
+    // 拿掉了上下箭頭按鈕；用鍵盤的人可以選到項目後按上下鍵移動
+    $$('.ro-item').forEach((li, i) => li.addEventListener('keydown', e => {
+      const j = e.key === 'ArrowUp' ? i - 1 : e.key === 'ArrowDown' ? i + 1 : -1;
+      if (j < 0 || j >= reorder.ids.length) return;
+      e.preventDefault();
+      [reorder.ids[i], reorder.ids[j]] = [reorder.ids[j], reorder.ids[i]];
+      draw(); $$('.ro-item')[j]?.focus();
+    }));
     $('#roCancel').addEventListener('click', () => exitSort(t.id));
     $('#roSave').addEventListener('click', () => {
       const rs = rows();
