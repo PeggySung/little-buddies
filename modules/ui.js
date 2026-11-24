@@ -199,3 +199,17 @@ export function foldIn(btns) {
       { duration: 260, easing: 'cubic-bezier(.2,.8,.25,1)' }).finished.then(() => { l.style.overflow = ''; }, () => {});
   });
 }
+
+/* ───────── 進度條順滑增減 ─────────
+   畫面整段重畫時進度條是新的元素，CSS 的 transition 不會動；
+   這裡記住每條進度條上次的百分比，重畫後從舊的長度滑到新的長度。 */
+const barMem = new Map();
+export function animateBars(root, scope) {
+  root.querySelectorAll('.bar[role="progressbar"]').forEach(b => {
+    const k = scope + '|' + b.getAttribute('aria-label'), now = +b.getAttribute('aria-valuenow'), prev = barMem.get(k);
+    barMem.set(k, now);
+    const i = b.firstElementChild;
+    if (prev == null || prev === now || !i || noMotion()) return;
+    i.animate([{ width: prev + '%' }, { width: now + '%' }], { duration: 450, easing: 'cubic-bezier(.2,.8,.25,1)' });
+  });
+}
