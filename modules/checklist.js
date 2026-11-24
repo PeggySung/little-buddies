@@ -1,6 +1,6 @@
 // 準備清單：每個人都要做、指定成員、有人帶就好（認領）；分類、範本
 import { doc, collection, onSnapshot, setDoc, updateDoc, deleteDoc, deleteField, serverTimestamp, writeBatch } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-import { $, $$, esc, ic, toast, localGet, localSet, tabFrom, tabSlide, foldOut, foldIn, animateBars } from './ui.js';
+import { $, $$, esc, ic, toast, localGet, localSet, foldOut, foldIn, animateBars } from './ui.js';
 import { avatarHTML } from './profile.js';
 import { openSheet, closeSheet } from './plan.js';
 import { countryBy } from './places.js';
@@ -128,35 +128,39 @@ export function renderChecklist(ctx, t) {
   const list = cache[t.id]?.list;
   if (list == null) { host.innerHTML = '<div class="spinner" style="margin:30px auto" role="status" aria-label="載入中"></div>'; return; }
   const me = ctx.S.user.uid;
-  const view = localGet('ckview:' + t.id) || 'mine';
+  // 11/24 起「我的／全部・團隊」合併成一個清單：自己的項目可以勾；別人負責的顏色淡、不能勾，看得到是誰
   const myItems = list.filter(x => mine(t, x, me));
-  const myDone = myItems.filter(x => (x.scope === 'claim' ? x.claimBy === me && isDone(x, me) : isDone(x, me))).length;
-  const shown = (view === 'mine' ? myItems : list);
+  const myDoneOf = x => (x.scope === 'claim' ? x.claimBy === me && isDone(x, me) : isDone(x, me));
+  const myDone = myItems.filter(myDoneOf).length;
+  const shown = list;
   const cats = [...new Set(shown.map(x => x.cat || '其他'))].sort((a, b) => {
     const ia = CAT_ORDER.indexOf(a), ib = CAT_ORDER.indexOf(b);
     return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
   });
   const fold = readFold(t.id);
-  // 分類的完成數：「我的」看自己有沒有打勾，「全部・團隊」看大家是不是都完成
-  const doneFor = x => view === 'mine' ? (x.scope === 'claim' ? x.claimBy === me && isDone(x, me) : isDone(x, me)) : itemDone(t, x);
+  // 分類的完成數：自己要做的看自己有沒有打勾，別人負責的看他們是不是都完成
+  const doneFor = x => (mine(t, x, me) ? myDoneOf(x) : itemDone(t, x));
   const catAll = c => shown.filter(x => (x.cat || '其他') === c).every(doneFor);
   const pct = myItems.length ? Math.round(myDone / myItems.length * 100) : 0;
   const bar = (p, label) => `<div class="bar" role="progressbar" aria-valuenow="${p}" aria-valuemin="0" aria-valuemax="100" aria-label="${esc(label)}"><i style="width:${p}%"></i></div>`;
-  const seg = `<div class="utabs" role="tablist" aria-label="顯示">
-      <button type="button" role="tab" data-view="mine" aria-selected="${view === 'mine'}">我的<span class="n">${myItems.length}</span></button>
-      <button type="button" role="tab" data-view="all" aria-selected="${view === 'all'}">全部・團隊<span class="n">${list.length}</span></button>
-    </div>`;
-  const mineCard = `<section class="card" style="gap:8px">
+  const ms = (t.memberUids || []).filter(u => t.members?.[u]);
+  const teamOpen = localGet('ckteam:' + t.id) === '1';
+  const doneAll = list.filter(x => itemDone(t, x)).length;
+  const unclaimed = list.filter(x => x.scope === 'claim' && !x.claimBy).length;
+  const card = `<section class="card" style="gap:8px">
       <div class="row" style="justify-content:space-between"><b>我的進度</b><span class="num">${myDone} / ${myItems.length}</span></div>
       ${bar(pct, '我的進度')}
-      <span class="tiny faint">只列出你要準備的項目，和還沒人認領的共用物品</span>
+      ${ms.length > 1 ? `<button type="button" class="ck-team" id="ckTeam" aria-expanded="${teamOpen}">
+          <span class="stack">${ms.map(u => avatarHTML(t.members[u], 'xs')).join('')}</span>
+          <span class="small">大家的進度</span><span class="num tiny faint" style="margin-left:auto">${doneAll} / ${list.length} 項全員完成</span>${ic.down}</button>
+        ${teamOpen ? `<div class="tm-list">${teamRows(t, list, me, bar)}</div>` : ''}` : ''}
+      ${unclaimed ? `<span class="tiny muted">還有 ${unclaimed} 項共用物品沒人認領</span>` : ''}
     </section>`;
   host.innerHTML = `
-    ${list.length ? seg + (view === 'mine' ? mineCard : teamCard(t, list, me, bar)) : ''}
+    ${list.length ? card : ''}
     ${shown.length && cats.length > 1 ? `<div class="fold-bar"><span>分類 ${cats.length}</span><button type="button" class="fold-all" id="ckFoldAll">${ic.chevUD}<span>${cats.every(c => isFolded(fold, c, catAll(c))) ? '全部展開' : '全部收合'}</span></button></div>` : ''}
     ${!list.length ? `<div class="card empty"><p class="small muted" style="margin:0">還沒有清單。可以從範本一次加入常用項目，再刪掉不需要的，或自己一項一項新增。</p>
         <button class="btn pri full" id="ckTpl">從範本加入</button></div>`
-      : !shown.length ? '<div class="card empty"><p class="small muted" style="margin:0">你目前沒有要準備的項目。</p></div>'
       : cats.map(c => {
         const xs = shown.filter(x => (x.cat || '其他') === c).sort((a, b) => (a.order || 0) - (b.order || 0));
         const n = xs.filter(doneFor).length;
@@ -168,7 +172,11 @@ export function renderChecklist(ctx, t) {
     ${list.length ? `<div class="grid2"><button class="btn" id="ckTpl">從範本加入</button><button class="btn" id="ckAdd">${ic.plus}新增項目</button></div>`
       : `<button class="btn full" id="ckAdd">${ic.plus}自己新增項目</button>`}`;
   animateBars(host, t.id);
-  $$('[data-view]', host).forEach(b => b.addEventListener('click', () => { if (b.getAttribute('aria-selected') === 'true') return; tabFrom(b); localSet('ckview:' + t.id, b.dataset.view); renderChecklist(ctx, t); tabSlide(host); }));
+  $('#ckTeam', host)?.addEventListener('click', () => {
+    const open = localGet('ckteam:' + t.id) !== '1';
+    localSet('ckteam:' + t.id, open ? '1' : null);
+    renderChecklist(ctx, t); $('#ckTeam', host)?.focus();
+  });
   const btnOf = c => $(`[data-fold="${CSS.escape(c)}"]`, host);
   $$('[data-fold]', host).forEach(b => b.addEventListener('click', () => {
     const c = b.dataset.fold, closing = b.getAttribute('aria-expanded') === 'true';
@@ -209,11 +217,10 @@ export function renderChecklist(ctx, t) {
 function readFold(id) { try { return JSON.parse(localGet('ckfold:' + id) || '{}'); } catch { return {}; } }
 function saveFold(id, f) { localSet('ckfold:' + id, JSON.stringify(f)); }
 const isFolded = (f, c, allDone) => c in f ? !!f[c] : allDone;
-function teamCard(t, list, me, bar) {
+// 展開「大家的進度」時，每個人一行：頭像、暱稱、完成數、進度條
+function teamRows(t, list, me, bar) {
   const ms = (t.memberUids || []).filter(u => t.members?.[u]);
-  const doneAll = list.filter(x => itemDone(t, x)).length;
-  const pAll = list.length ? Math.round(doneAll / list.length * 100) : 0;
-  const rows = ms.map(u => {
+  return ms.map(u => {
     const xs = list.filter(x => people(t, x).includes(u));
     const d = xs.filter(x => isDone(x, u)).length;
     const p = xs.length ? Math.round(d / xs.length * 100) : 0;
@@ -222,13 +229,6 @@ function teamCard(t, list, me, bar) {
       <div class="tm-main"><div class="row" style="justify-content:space-between"><span class="small">${esc(m.nickname)}${u === me ? '<span class="faint">（你）</span>' : ''}</span>
         <span class="num small">${xs.length ? `${d} / ${xs.length}` : '—'}</span></div>${bar(p, m.nickname + ' 的進度')}</div></div>`;
   }).join('');
-  const unclaimed = list.filter(x => x.scope === 'claim' && !x.claimBy).length;
-  return `<section class="card" style="gap:12px">
-    <div class="row" style="justify-content:space-between"><b>團隊進度</b><span class="num">${doneAll} / ${list.length} 項完成</span></div>
-    ${bar(pAll, '團隊進度')}
-    <div class="tm-list">${rows}</div>
-    ${unclaimed ? `<span class="tiny muted">還有 ${unclaimed} 項共用物品沒人認領</span>` : ''}
-  </section>`;
 }
 const write = p => p.catch(e => toast('儲存失敗：' + (e?.code || e?.message)));
 
@@ -241,7 +241,7 @@ function rowHTML(t, x, me) {
     ? (x.claimBy ? `<span class="tiny muted row" style="gap:4px">${avatarHTML(t.members[x.claimBy] || {}, 'xs')}${esc(t.members[x.claimBy]?.nickname || '')} 負責帶</span>`
       : '<span class="tiny faint">還沒有人認領</span>')
     : `<div class="stack ck-who">${ps.map(u => `<span class="${isDone(x, u) ? '' : 'undone'}" title="${esc(t.members[u]?.nickname || '')}${isDone(x, u) ? ' 已完成' : ' 未完成'}">${avatarHTML(t.members[u] || {}, 'xs')}</span>`).join('')}</div>`;
-  return `<div class="ck ${done ? 'done' : ''}">
+  return `<div class="ck ${done ? 'done' : ''} ${minePart ? '' : 'other'}">
     ${minePart ? `<button class="ck-box" data-tick="${esc(x.id)}" role="checkbox" aria-checked="${myOn}" aria-label="${esc(x.text)}${x.scope === 'claim' && !x.claimBy ? '（打勾＝我來帶）' : ''}">${myOn ? ic.check : ''}</button>`
       : `<span class="ck-box ro" aria-hidden="true">${done ? ic.check : ''}</span>`}
     <div class="ck-main">

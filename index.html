@@ -395,6 +395,16 @@ textarea.input { min-height: 84px; padding: 10px 14px; line-height: 1.6; resize:
 .ck.done .ck-text { color: var(--ink3); text-decoration: line-through; text-decoration-color: var(--line2); }
 .ck-who .av { box-shadow: 0 0 0 2px var(--card); margin-right: -4px; }
 .ck-who .undone .av { opacity: .35; filter: grayscale(1); }
+/* 準備清單合併成一個清單：別人負責的項目顏色淡、不能勾 */
+.ck.other .ck-text { color: var(--ink2); font-weight: 400; }
+.ck.other .ck-box.ro { opacity: .35; border-style: dashed; }
+.ck.other.done .ck-box.ro { opacity: .5; border-style: solid; }
+.ck-team { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; margin-top: 4px; padding: 8px 0 0; border: 0; border-top: 1.5px dashed var(--line); background: none; color: var(--ink2); font: inherit; cursor: pointer; text-align: left; }
+.ck-team .stack .av { margin-right: -6px; }
+.ck-team .stack { margin-right: 6px; }
+.ck-team > svg { flex: none; transition: transform .2s; }
+.ck-team[aria-expanded="true"] > svg { transform: rotate(180deg); }
+.ck-team:focus-visible { outline: 2.5px solid var(--acc); outline-offset: 2px; border-radius: 8px; }
 .linkbtn { border: 0; background: none; padding: 6px 4px; min-height: 32px; color: var(--sel-ink); font-weight: 700; font-size: 13px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; font-family: inherit; }
 .tpl-list { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
 .tpl { min-height: 88px; border-radius: var(--r-btn); border: 2px solid var(--line); background: var(--card); color: var(--ink); display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; padding: 10px 12px; text-align: left; cursor: pointer; font-family: inherit; }
