@@ -228,7 +228,19 @@ export function renderPlan(ctx, t, sortDay = null) {
     <button class="btn full" id="addIt">${ic.plus}新增${day === 0 ? '備案' : '行程'}</button>`;
   $('#daybar').addEventListener('click', e => {
     const b = e.target.closest('[data-day]'); if (!b) return;
-    localSet(key, b.dataset.day); renderPlan(ctx, t); centerDay(true);
+    const prev = b.parentElement.querySelector('[aria-pressed="true"]')?.dataset.day;
+    if (b.dataset.day === prev) return;
+    const sl = $('#daybar').scrollLeft;
+    localSet(key, b.dataset.day); renderPlan(ctx, t);
+    // 換天動畫：日期列停在原位再平滑置中，舊的一天褪色、新的一天亮起，下面的行程淡入上浮
+    const nb = $('#daybar');
+    if (nb) {
+      nb.scrollLeft = sl;
+      nb.querySelector('[aria-pressed="true"]')?.classList.add('picked');
+      nb.querySelector(`[data-day="${prev}"]`)?.classList.add('unpicked');
+      for (let n = nb.nextElementSibling; n; n = n.nextElementSibling) n.classList.add('tab-in');
+    }
+    centerDay(true);
   });
   $('#addIt').addEventListener('click', () => editItem(ctx, t, null, day, japan));
   $('#roStart')?.addEventListener('click', () => { sortFromPlan = true; location.hash = `#/trip/${t.id}/plan/sort/${day}`; });
