@@ -131,6 +131,24 @@ async function forecast(g) {
     cacheSet(ck, v); return v;
   } catch { return cacheGet(ck, 3 * 86400000) || null; } // 沒網路時，三天內的舊資料也先拿來用
 }
+// 空氣品質（約 5 天）：每天取 AQI、PM2.5、PM10 的最高值
+async function airq(g) {
+  const ck = `wxa:${g.lat.toFixed(2)},${g.lon.toFixed(2)}`;
+  const fresh = cacheGet(ck, 60 * 60000); if (fresh !== undefined) return fresh;
+  try {
+    const j = await getJSON(`https://air-quality-api.open-meteo.com/v1/air-quality?${ll(g)}&hourly=us_aqi,pm2_5,pm10&timezone=auto&forecast_days=6`);
+    const h = j.hourly || {}, days = {};
+    (h.time || []).forEach((t, i) => {
+      const d = t.slice(0, 10), o = days[d] || (days[d] = {});
+      [['aqi', 'us_aqi'], ['pm25', 'pm2_5'], ['pm10', 'pm10']].forEach(([k, src]) => {
+        const v = h[src]?.[i]; if (v != null && (o[k] == null || v > o[k])) o[k] = v;
+      });
+    });
+    Object.keys(days).forEach(d => { if (days[d].aqi == null) delete days[d]; });
+    const r = Object.keys(days).length ? days : null;
+    cacheSet(ck, r); return r;
+  } catch { const old = cacheGet(ck, 86400000); return old === undefined ? null : old; }
+}
 async function marine(g) {
   const ck = `wxm:${g.lat.toFixed(2)},${g.lon.toFixed(2)}`;
   const fresh = cacheGet(ck, 3 * 3600000); if (fresh !== undefined) return fresh;
@@ -156,8 +174,8 @@ function tripWx(t) {
     m.p = (async () => {
       const g = await geo(pl);
       if (!g) { m.data = { pl, g: null }; m.at = Date.now(); return m.data; }
-      const [f, mr] = await Promise.all([forecast(g), marine(g)]);
-      m.data = { pl, g, f, m: mr }; m.at = Date.now(); return m.data;
+      const [f, mr, aq] = await Promise.all([forecast(g), marine(g), airq(g)]);
+      m.data = { pl, g, f, m: mr, a: aq }; m.at = Date.now(); return m.data;
     })().catch(() => { m.data = { pl, g: null }; m.at = Date.now(); return m.data; }).finally(() => { m.p = null; });
     memo.set(t.id, m);
   }
@@ -241,7 +259,9 @@ function windInfo(gust) {
   return { t: '狂風，注意安全', g, warn: 1 };
 }
 const uvLevel = u => (u < 3 ? '低' : u < 6 ? '中' : u < 8 ? '高' : u < 11 ? '過量' : '危險');
-function statsHTML(fd) {
+// 空氣品質指數（美國 AQI 分級，台灣環境部的 AQI 也是同一套級距）
+const aqiLevel = a => (a <= 50 ? '良好' : a <= 100 ? '普通' : a <= 150 ? '對敏感族群不健康' : a <= 200 ? '不健康' : a <= 300 ? '非常不健康' : '危害');
+function statsHTML(fd, aq) {
   const n = v => Math.round(v);
   const items = [];
   if (fd.fmax != null && fd.fmin != null) items.push(['體感溫度', `<span class="num">${n(fd.fmax)}°</span>/<span class="num">${n(fd.fmin)}°</span>`]);
@@ -249,15 +269,17 @@ function statsHTML(fd) {
   const w = windInfo(fd.gust);
   if (w) items.push(['風', `${w.t}<small>陣風 <span class="num">${w.g}</span> km/h</small>`, w.warn]);
   if (fd.uv != null) items.push(['紫外線', `<span class="num">${Math.round(fd.uv)}</span> ${uvLevel(fd.uv)}`, fd.uv >= 8]);
+  // 空氣品質自己佔一整行，四個格子維持偶數
+  if (aq?.aqi != null) items.push(['空氣品質', `AQI <span class="num">${n(aq.aqi)}</span> ${aqiLevel(aq.aqi)}${aq.pm25 != null ? `<small>PM2.5 <span class="num">${n(aq.pm25)}</span>${aq.pm10 != null ? `・PM10 <span class="num">${n(aq.pm10)}</span>` : ''} μg/m³（當天最高）</small>` : ''}`, aq.aqi > 100, true]);
   if (!items.length) return '';
   return `<h3>天氣<small>${esc(wmo(fd.code).n)}・<span class="num">${n(fd.max)}°</span>/<span class="num">${n(fd.min)}°</span></small></h3>
-    <div class="wxstats">${items.map(([k, v, warn]) => `<div class="${warn ? 'warn' : ''}"><span>${k}</span><b>${v}</b></div>`).join('')}</div>`;
+    <div class="wxstats">${items.map(([k, v, warn, wide]) => `<div class="${warn ? 'warn' : ''}${wide ? ' wide' : ''}"><span>${k}</span><b>${v}</b></div>`).join('')}</div>`;
 }
 function cardHTML(d, date, tripTz) {
   const tz = d.f?.tz || tripTz, now = nowAt(tz), isToday = now.date === date;
   const sun = sunOf(d, date, tz);
   const fd = d.f?.days?.[date];
-  let h = fd ? statsHTML(fd) : '';
+  let h = fd ? statsHTML(fd, d.a?.[date]) : '';
   if (sun) {
     const W = 300, SH = 58, base = 54, x = m => m / 1440 * W;
     const sx = x(sun.rise), ex = x(sun.set), cx = (sx + ex) / 2, r = (ex - sx) / 2, ry = r * .72;
