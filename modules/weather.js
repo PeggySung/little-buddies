@@ -200,13 +200,14 @@ export function mountDayWx(t, dinfo) {
     if (!row.isConnected) return;
     const d = m.data, pl = m.pl || placeOf(t);
     if (!pl) { row.innerHTML = ''; return; }
-    if (!d) { row.innerHTML = `<span class="wxchip off">${esc(pl.label)}・讀取天氣中…</span>`; return; }
-    if (!d.g) { row.innerHTML = `<span class="wxchip off">找不到「${esc(pl.label)}」的位置，看不到天氣</span>`; return; }
+    const place = `<span class="wxplace">${esc(pl.label)}</span>`;
+    if (!d) { row.innerHTML = `<span class="wxchip off">${place}<span class="wxinfo">・讀取天氣中…</span></span>`; return; }
+    if (!d.g) { row.innerHTML = `<span class="wxchip off"><span class="wxinfo">找不到「</span>${place}<span class="wxinfo">」的位置，看不到天氣</span></span>`; return; }
     const fd = d.f?.days?.[dinfo.date], w = fd ? wmo(fd.code) : null;
     const txt = w ? `${esc(w.n)} <span class="num">${Math.round(fd.max)}°</span><span class="faint">/</span><span class="num">${Math.round(fd.min)}°</span>`
       : (d.f ? '日出日落・潮汐' : '天氣暫時讀不到');
     const open = openFor === t.id;
-    row.innerHTML = `<button class="wxchip" id="wxBtn" aria-expanded="${open}" aria-controls="wxCard">${esc(pl.label)}・${txt}${chevron}</button>
+    row.innerHTML = `<button class="wxchip" id="wxBtn" aria-expanded="${open}" aria-controls="wxCard">${place}<span class="wxinfo">・${txt}</span>${chevron}</button>
       ${!w && d.f ? '<span class="tiny faint">出發前 16 天內才有天氣預報</span>' : ''}`;
     $('#wxBtn').addEventListener('click', () => { openFor = openFor === t.id ? null : t.id; draw(); });
     const card = $('#wxCard');

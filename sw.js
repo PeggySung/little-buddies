@@ -1,6 +1,6 @@
 // 離線快取：網頁本身先試網路、沒網路用快取；圖片、字體、Firebase 程式庫先用快取
 // 每次更新網站都要改 VERSION，大家重新整理後才會拿到新版
-const VERSION = 'lb-v40';
+const VERSION = 'lb-v41';
 const AVATAR_CACHE = 'lb-avatars'; // Google 頭像（跨版本保留，離線也看得到）
 const SHELL = ['./', './index.html', './app.js', './firebase-config.js', './manifest.webmanifest',
   './modules/ui.js', './modules/color.js', './modules/profile.js', './modules/trips.js', './modules/places.js', './modules/plan.js', './modules/book.js', './modules/checklist.js', './modules/money.js', './modules/shop.js', './modules/weather.js',

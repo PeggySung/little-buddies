@@ -530,7 +530,10 @@ html.wxbg #main { position: relative; z-index: 1; }
 /* 行程頁：天氣小卡（日出日落、潮汐） */
 .wxrow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: -8px; }
 .wxrow:empty { display: none; }
-.wxchip { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 4px 12px; border-radius: 999px; background: var(--card); border: 1.5px solid var(--line); color: var(--ink); font: inherit; font-size: 13px; font-weight: 700; box-shadow: var(--shadow); cursor: pointer; }
+.wxchip { display: inline-flex; align-items: center; gap: 0; max-width: 100%; min-width: 0; min-height: 36px; padding: 4px 12px; border-radius: 999px; background: var(--card); border: 1.5px solid var(--line); color: var(--ink); font: inherit; font-size: 13px; font-weight: 700; box-shadow: var(--shadow); cursor: pointer; }
+.wxplace { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* 城市名太長時用「…」省略，不撐開畫面 */
+.wxinfo { flex: none; white-space: nowrap; }
+.wxchip svg { flex: none; margin-left: 6px; }
 .wxchip.off { cursor: default; box-shadow: none; color: var(--ink2); font-weight: 500; }
 .wxchip .num { font-family: var(--f-num); font-weight: 800; }
 .wxchip svg { transition: transform .2s; }
