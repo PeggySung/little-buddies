@@ -11,6 +11,7 @@ import { stopAllMoney } from './modules/money.js';
 import { stopAllShop } from './modules/shop.js';
 import { $, esc, ic, toast, applyTheme, toggleTheme, isDark, copyText, navSlide } from './modules/ui.js';
 import { CORE } from './modules/color.js';
+import { setWxTrip } from './modules/weather.js';
 import { renderOnboarding, renderProfile, renderEdit, renderQuizRedo, avatarHTML } from './modules/profile.js';
 import { renderHome, renderTripForm, renderTrip, renderTripPlan, renderTripBook, renderTripChecklist, renderTripMoney, renderJoin, ensureTrips, stopTrips, cleanup, makeSync, pendingJoin } from './modules/trips.js';
 
@@ -121,6 +122,8 @@ function render(keep = false) {
   if (!S.user) return;
   if (!S.profile) return renderOnboarding(ctx);
   const route = location.hash.replace(/^#\/?/, '');
+  // 天氣背景：只在旅程頁（編輯旅程除外）依那趟旅程的當地天氣顯示
+  { const tm = route.match(/^trip\/([\w-]+)/); setWxTrip(tm && !route.endsWith('/edit') ? (S.trips || []).find(x => x.id === tm[1]) : null); }
   if (route !== lastRoute && !keep) { cleanup(); lastRoute = route; window.scrollTo(0, 0); }
   let m;
   if (route === 'me') return renderProfile(ctx);
@@ -167,7 +170,7 @@ window.addEventListener('hashchange', () => { resetPlanUI(); render(); navSlide(
 /* ───────── 登入狀態 ───────── */
 onAuthStateChanged(auth, async user => {
   S.user = user; S.profile = null; S.coreId = null; S.trips = null; lastRoute = null;
-  if (!user) { stopTrips(); return showLogin(); }
+  if (!user) { stopTrips(); setWxTrip(null); return showLogin(); }
   $('#main').innerHTML = '<div class="gate"><div class="spinner" role="status" aria-label="載入中"></div></div>';
   // 15 秒還讀不到就顯示「連不上」，不要一直轉圈
   const withTimeout = (p, ms = 15000) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(Object.assign(new Error('timeout'), { code: 'timeout' })), ms))]);

@@ -1,6 +1,7 @@
 // 個人檔案：第一次登入的設定、代表色測驗、個人檔案頁、編輯
 import { doc, setDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { $, $$, esc, ic, toast, isDark } from './ui.js';
+import { BG_MODES, bgMode, setBgMode } from './weather.js';
 import { CORE, coreById, QUIZ, FAMILIES, quizColor, soft, isAllowedGuestColor } from './color.js';
 
 /* ───────── 頭像與代表色 ───────── */
@@ -290,6 +291,11 @@ export function renderProfile(ctx) {
       <div class="dash"></div>
       <div class="list-row"><span class="k">${ic.image}身分</span><span>${core ? '小夥伴（可以開旅程）' : '旅伴'}</span></div>
     </section>
+    <section class="card" style="gap:10px">
+      <div class="list-row"><span class="k">${ic.sun}背景天氣動畫</span><span class="tiny faint">只影響這支手機</span></div>
+      <div class="seg3" id="wxMode" role="group" aria-label="背景天氣動畫">${BG_MODES.map(m => `<button type="button" data-v="${m.v}" aria-pressed="${bgMode() === m.v}">${m.label}</button>`).join('')}</div>
+      <p class="tiny faint" id="wxHint" style="margin:0">${BG_MODES.find(m => m.v === bgMode()).hint}</p>
+    </section>
     <a class="btn full" href="#/me/edit">${ic.edit}編輯個人檔案</a>
     ${core ? '' : `<a class="btn full" href="#/me/color">重做代表色測驗</a>`}
     ${core ? `<a class="btn full" href="https://console.firebase.google.com/project/fir-app-e6f7f/firestore" target="_blank" rel="noopener">查看資料庫用量（Firebase 後台）</a>
@@ -299,6 +305,13 @@ export function renderProfile(ctx) {
   </div>`;
   ctx.bindTop();
   $('#logout').addEventListener('click', () => ctx.signOut());
+  $('#wxMode').addEventListener('click', e => {
+    const b = e.target.closest('button[data-v]'); if (!b) return;
+    setBgMode(b.dataset.v);
+    $$('#wxMode button').forEach(x => x.setAttribute('aria-pressed', x === b));
+    $('#wxHint').textContent = BG_MODES.find(m => m.v === b.dataset.v).hint;
+    toast(b.dataset.v === 'off' ? '已關閉背景天氣動畫' : '已開啟，打開任一趟旅程就看得到');
+  });
 }
 
 /* ───────── 編輯個人檔案 ───────── */
