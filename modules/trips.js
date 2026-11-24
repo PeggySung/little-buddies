@@ -1,7 +1,7 @@
 // 旅程：首頁列表與足跡、開新旅程、旅程頁、邀請碼、加入旅程
 import { doc, collection, query, where, onSnapshot, getDoc, setDoc, updateDoc, deleteDoc, arrayUnion,
   serverTimestamp, Timestamp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-import { $, $$, esc, ic, toast, copyText, localGet, localSet, tabFrom, tabSlide } from './ui.js';
+import { $, $$, esc, ic, toast, copyText, localGet, localSet, tabFrom, tabSlide, navFrom } from './ui.js';
 import { avatarHTML } from './profile.js';
 import { adjustForPeers } from './color.js';
 import { renderPlan, watchItems, isBusy, exitSort } from './plan.js';
@@ -439,7 +439,10 @@ function tabBar(id, active) {
     ? `<a href="${href}" class="${active === k ? 'on' : ''}" ${active === k ? 'aria-current="page"' : ''}><span class="pill">${icon[k]}</span>${l}</a>`
     : `<button type="button" class="soon" data-soon="${l}"><span class="pill">${icon[k]}</span>${l}</button>`).join('')}</nav>`;
 }
-function bindTabs() { $$('[data-soon]').forEach(b => b.addEventListener('click', () => toast(`「${b.dataset.soon}」還在製作中，下一版開放`))); }
+function bindTabs() {
+  $$('[data-soon]').forEach(b => b.addEventListener('click', () => toast(`「${b.dataset.soon}」還在製作中，下一版開放`)));
+  $$('.tabbar a:not(.on)').forEach(a => a.addEventListener('click', navFrom));
+}
 
 /* ───────── 行程頁 ───────── */
 export function renderTripPlan(ctx, id, sortDay = null) {

@@ -154,3 +154,21 @@ export function tabSlide(root = document) {
     while (n) { n.classList.add('tab-in'); n = n.nextElementSibling; }
   });
 }
+
+/* 底部旅程分頁換頁：點的時候記住舊的淡黃底塊位置（navFrom），
+   新頁畫好後讓底塊滑過來、圖示輕輕彈一下，中間內容淡入上浮（navSlide）。
+   上面的標題列不動。 */
+let navMem = null;
+export function navFrom() {
+  const on = document.querySelector('.tabbar .on .pill');
+  navMem = on ? on.getBoundingClientRect() : null;
+}
+export function navSlide() {
+  const m = navMem; navMem = null; if (!m) return;
+  const pill = document.querySelector('.tabbar .on .pill'); if (!pill) return;
+  const dx = m.left - pill.getBoundingClientRect().left;
+  if (Math.abs(dx) < 1) return;
+  pill.style.setProperty('--tx', dx + 'px');
+  pill.classList.add('slid');
+  document.querySelectorAll('#main .wrap > :not(header.top)').forEach(el => el.classList.add('tab-in'));
+}

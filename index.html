@@ -300,9 +300,10 @@ textarea.input { min-height: 84px; padding: 10px 14px; line-height: 1.6; resize:
 .wrap.has-tabs { padding-bottom: calc(96px + var(--safe-b)); }
 .tabbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; background: var(--card); border-top: 1.5px solid var(--line); display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); padding: 6px max(4px, calc(50% - 260px)) calc(8px + var(--safe-b)); }
 .tabbar a, .tabbar button { border: 0; background: none; text-decoration: none; color: var(--ink3); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 11px; font-weight: 500; min-height: 52px; cursor: pointer; padding: 0; font-family: inherit; }
-.tabbar .pill { width: 44px; height: 28px; border-radius: 999px; display: flex; align-items: center; justify-content: center; }
+.tabbar .pill { position: relative; width: 44px; height: 28px; border-radius: 999px; display: flex; align-items: center; justify-content: center; }
 .tabbar .on { color: var(--ink); font-weight: 700; }
-.tabbar .on .pill { background: var(--acc-soft); }
+/* 淡黃底塊畫在 ::before，換頁時由 JS 讓它從舊頁籤滑過來 */
+.tabbar .on .pill::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: var(--acc-soft); }
 .tabbar .soon { opacity: .55; }
 
 /* 行程 */
@@ -463,7 +464,10 @@ input[type=range] { width: 100%; accent-color: var(--acc); }
 .ttabs button.slid::before, .utabs button.slid::after { animation: tabslide .28s cubic-bezier(.3,.7,.3,1); }
 @keyframes tabin { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 .tab-in { animation: tabin .22s ease-out both; }
-@media (prefers-reduced-motion: reduce) { .ttabs button.slid::before, .utabs button.slid::after, .tab-in { animation: none; } }
+.tabbar .pill.slid::before { animation: tabslide .3s cubic-bezier(.3,.7,.3,1); }
+@keyframes tabpop { 0% { transform: scale(.82); } 60% { transform: scale(1.08); } 100% { transform: none; } }
+.tabbar .pill.slid svg { animation: tabpop .3s ease-out; }
+@media (prefers-reduced-motion: reduce) { .ttabs button.slid::before, .utabs button.slid::after, .tab-in, .tabbar .pill.slid::before, .tabbar .pill.slid svg { animation: none; } }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2s; } #toast { transition: none; } }
 </style>

@@ -9,7 +9,7 @@ import { stopAllBookings } from './modules/book.js';
 import { stopAllChecklist } from './modules/checklist.js';
 import { stopAllMoney } from './modules/money.js';
 import { stopAllShop } from './modules/shop.js';
-import { $, esc, ic, toast, applyTheme, toggleTheme, isDark, copyText } from './modules/ui.js';
+import { $, esc, ic, toast, applyTheme, toggleTheme, isDark, copyText, navSlide } from './modules/ui.js';
 import { CORE } from './modules/color.js';
 import { renderOnboarding, renderProfile, renderEdit, renderQuizRedo, avatarHTML } from './modules/profile.js';
 import { renderHome, renderTripForm, renderTrip, renderTripPlan, renderTripBook, renderTripChecklist, renderTripMoney, renderJoin, ensureTrips, stopTrips, cleanup, makeSync, pendingJoin } from './modules/trips.js';
@@ -151,7 +151,7 @@ function afterOnboard() {
 }
 const ctx = { S, render, topBar, bindTop, brand, afterOnboard, inviteCode: () => pendingJoin.get(), signOut: () => { try { localStorage.removeItem(`lb-coreCheck-${S.user?.uid}`); } catch {} stopTrips(); stopAllItems(); stopAllBookings(); stopAllChecklist(); stopAllMoney(); stopAllShop(); return signOut(auth); }, setProfile: p => { S.profile = p; } };
 ctx.afterProfileSave = makeSync(ctx);
-window.addEventListener('hashchange', () => { resetPlanUI(); render(); });
+window.addEventListener('hashchange', () => { resetPlanUI(); render(); navSlide(); });
 
 /* ───────── 邀請連結：?join=邀請碼 ───────── */
 {
