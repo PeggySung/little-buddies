@@ -118,12 +118,15 @@ async function geo(pl) {
 /* ───────── 天氣預報（16 天）和潮汐（約 9 天） ───────── */
 const ll = g => `latitude=${g.lat.toFixed(3)}&longitude=${g.lon.toFixed(3)}`;
 async function forecast(g) {
-  const ck = `wxf:${g.lat.toFixed(2)},${g.lon.toFixed(2)}`;
+  const ck = `wxf2:${g.lat.toFixed(2)},${g.lon.toFixed(2)}`; // wxf2：加了體感、降雨、風、紫外線
   const fresh = cacheGet(ck, 30 * 60000); if (fresh) return fresh;
   try {
-    const j = await getJSON(`https://api.open-meteo.com/v1/forecast?${ll(g)}&current=weather_code,temperature_2m&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset&timezone=auto&forecast_days=16`);
+    const j = await getJSON(`https://api.open-meteo.com/v1/forecast?${ll(g)}&current=weather_code,temperature_2m&daily=weather_code,temperature_2m_max,temperature_2m_min,apparent_temperature_max,apparent_temperature_min,precipitation_probability_max,precipitation_sum,wind_speed_10m_max,wind_gusts_10m_max,uv_index_max,sunrise,sunset&timezone=auto&forecast_days=16`);
     const days = {};
-    (j.daily?.time || []).forEach((d, i) => { days[d] = { code: j.daily.weather_code[i], max: j.daily.temperature_2m_max[i], min: j.daily.temperature_2m_min[i], rise: isoMin(j.daily.sunrise[i]), set: isoMin(j.daily.sunset[i]) }; });
+    const dl = j.daily || {}, at = (k, i) => (dl[k] ? dl[k][i] : null);
+    (dl.time || []).forEach((d, i) => { days[d] = { code: dl.weather_code[i], max: dl.temperature_2m_max[i], min: dl.temperature_2m_min[i],
+      fmax: at('apparent_temperature_max', i), fmin: at('apparent_temperature_min', i), pop: at('precipitation_probability_max', i), rain: at('precipitation_sum', i),
+      wind: at('wind_speed_10m_max', i), gust: at('wind_gusts_10m_max', i), uv: at('uv_index_max', i), rise: isoMin(j.daily.sunrise[i]), set: isoMin(j.daily.sunset[i]) }; });
     const v = { tz: j.timezone, cur: j.current ? { code: j.current.weather_code, temp: j.current.temperature_2m } : null, days };
     cacheSet(ck, v); return v;
   } catch { return cacheGet(ck, 3 * 86400000) || null; } // 沒網路時，三天內的舊資料也先拿來用
@@ -228,10 +231,33 @@ export function mountDayWx(t, dinfo) {
   draw();
   if (m.p) m.p.then(draw);
 }
+// 風：用最大陣風（km/h）分級，強風以上標出來
+function windInfo(gust) {
+  if (gust == null) return null;
+  const g = Math.round(gust);
+  if (g < 20) return { t: '微風', g };
+  if (g < 39) return { t: '有點風', g };
+  if (g < 62) return { t: '強風', g, warn: 1 };
+  return { t: '狂風，注意安全', g, warn: 1 };
+}
+const uvLevel = u => (u < 3 ? '低' : u < 6 ? '中' : u < 8 ? '高' : u < 11 ? '過量' : '危險');
+function statsHTML(fd) {
+  const n = v => Math.round(v);
+  const items = [];
+  if (fd.fmax != null && fd.fmin != null) items.push(['體感溫度', `<span class="num">${n(fd.fmax)}°</span>/<span class="num">${n(fd.fmin)}°</span>`]);
+  if (fd.pop != null) items.push(['降雨機率', `<span class="num">${n(fd.pop)}%</span>${fd.rain >= 0.5 ? `<small>約 ${fd.rain >= 10 ? n(fd.rain) : fd.rain.toFixed(1)} mm</small>` : ''}`]);
+  const w = windInfo(fd.gust);
+  if (w) items.push(['風', `${w.t}<small>陣風 <span class="num">${w.g}</span> km/h</small>`, w.warn]);
+  if (fd.uv != null) items.push(['紫外線', `<span class="num">${Math.round(fd.uv)}</span> ${uvLevel(fd.uv)}`, fd.uv >= 8]);
+  if (!items.length) return '';
+  return `<h3>天氣<small>${esc(wmo(fd.code).n)}・<span class="num">${n(fd.max)}°</span>/<span class="num">${n(fd.min)}°</span></small></h3>
+    <div class="wxstats">${items.map(([k, v, warn]) => `<div class="${warn ? 'warn' : ''}"><span>${k}</span><b>${v}</b></div>`).join('')}</div>`;
+}
 function cardHTML(d, date, tripTz) {
   const tz = d.f?.tz || tripTz, now = nowAt(tz), isToday = now.date === date;
   const sun = sunOf(d, date, tz);
-  let h = '';
+  const fd = d.f?.days?.[date];
+  let h = fd ? statsHTML(fd) : '';
   if (sun) {
     const W = 300, SH = 58, base = 54, x = m => m / 1440 * W;
     const sx = x(sun.rise), ex = x(sun.set), cx = (sx + ex) / 2, r = (ex - sx) / 2, ry = r * .72;
@@ -245,7 +271,7 @@ function cardHTML(d, date, tripTz) {
         <circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="8" fill="${up ? 'var(--acc)' : 'var(--sunk)'}" stroke="var(--card)" stroke-width="3"/>`;
       sub = up ? '太陽還在天上' : (now.min < sun.rise ? '還沒日出' : '已經日落');
     }
-    h += `<h3>日出日落<small>${sub}</small></h3>
+    h += `${h ? '<hr>' : ''}<h3>日出日落<small>${sub}</small></h3>
       <div><svg viewBox="0 0 ${W} ${SH}" role="img" aria-label="日出 ${hm(sun.rise)}，日落 ${hm(sun.set)}">
         <line x1="0" y1="${base}" x2="${W}" y2="${base}" stroke="var(--line2)" stroke-width="1.5"/>
         <path d="M${sx.toFixed(1)} ${base} A${r.toFixed(1)} ${ry.toFixed(1)} 0 0 1 ${ex.toFixed(1)} ${base}" fill="none" stroke="var(--acc)" stroke-width="2" stroke-dasharray="4 5"/>${mark}
