@@ -164,10 +164,11 @@ export function navFrom() {
   navMem = on ? on.getBoundingClientRect() : null;
 }
 export function navSlide() {
-  const m = navMem; navMem = null; if (!m) return;
-  const pill = document.querySelector('.tabbar .on .pill'); if (!pill) return;
-  const dx = m.left - pill.getBoundingClientRect().left;
-  if (Math.abs(dx) < 1) return;
+  const m = navMem; navMem = null;
+  const pill = m && document.querySelector('.tabbar .on .pill');
+  const dx = pill ? m.left - pill.getBoundingClientRect().left : 0;
+  // 不是點底部頁籤（例如從首頁點進旅程、新增旅行、回首頁）：整頁淡入上浮
+  if (Math.abs(dx) < 1) { document.querySelector('#main > .wrap')?.classList.add('tab-in'); return; }
   pill.style.setProperty('--tx', dx + 'px');
   pill.classList.add('slid');
   document.querySelectorAll('#main .wrap > :not(header.top)').forEach(el => el.classList.add('tab-in'));

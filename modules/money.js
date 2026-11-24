@@ -425,7 +425,10 @@ function openDialog(html, onOpen) {
   bg.className = 'dlg-bg';
   bg.innerHTML = `<div class="dlg" role="dialog" aria-modal="true">${html}</div>`;
   document.body.appendChild(bg);
-  const close = () => bg.remove();
+  const close = () => {
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) { bg.remove(); return; }
+    bg.classList.add('out'); setTimeout(() => bg.remove(), 200);
+  };
   bg.addEventListener('keydown', e => { if (e.key === 'Escape') { e.stopPropagation(); close(); bg.dispatchEvent(new Event('cancel')); } });
   onOpen(bg.firstElementChild, close, bg);
   bg.querySelector('input,select,textarea,button')?.focus();

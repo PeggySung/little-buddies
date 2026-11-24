@@ -310,7 +310,7 @@ function evHTML(t, e) {
 
 /* ───────── 底部彈出視窗 ───────── */
 export function openSheet(html, onOpen) {
-  closeSheet();
+  closeSheet(true);
   const bg = document.createElement('div');
   bg.className = 'sheet-bg'; bg.id = 'sheet';
   bg.innerHTML = `<div class="sheet" role="dialog" aria-modal="true">${html}</div>`;
@@ -326,7 +326,15 @@ export function openSheet(html, onOpen) {
   onOpen?.(bg.firstElementChild);
   bg.querySelector('input,textarea,select')?.focus({ preventScroll: true });
 }
-export function closeSheet() { $('#sheet')?.remove(); document.body.style.overflow = ''; }
+// 關閉時先播「往下滑走」動畫再拿掉；id 立刻拿掉，其他程式看 #sheet 就知道已經關了
+export function closeSheet(now = false) {
+  const bg = $('#sheet'); document.body.style.overflow = ''; if (!bg) return;
+  bg.removeAttribute('id');
+  if (now || matchMedia('(prefers-reduced-motion: reduce)').matches) { bg.remove(); return; }
+  bg.classList.add('out');
+  bg.addEventListener('animationend', () => bg.remove(), { once: true });
+  setTimeout(() => bg.remove(), 400);
+}
 
 function editItem(ctx, t, x, day, japan) {
   const { S } = ctx;
