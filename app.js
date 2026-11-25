@@ -13,7 +13,7 @@ import { $, esc, ic, toast, applyTheme, toggleTheme, isDark, copyText, navSlide 
 import { CORE } from './modules/color.js';
 import { setWxTrip } from './modules/weather.js';
 import { renderOnboarding, renderProfile, renderEdit, renderQuizRedo, avatarHTML } from './modules/profile.js';
-import { renderHome, renderFootprints, renderTripForm, renderTrip, renderTripPlan, renderTripBook, renderTripChecklist, renderTripMoney, renderJoin, ensureTrips, stopTrips, cleanup, makeSync, pendingJoin } from './modules/trips.js';
+import { renderHome, renderFootprints, renderDone, renderTripForm, renderTrip, renderTripPlan, renderTripBook, renderTripChecklist, renderTripMoney, renderJoin, ensureTrips, stopTrips, cleanup, makeSync, pendingJoin } from './modules/trips.js';
 
 applyTheme();
 
@@ -131,6 +131,7 @@ function render(keep = false) {
   if (route === 'me/color' && !S.profile.coreId) return renderQuizRedo(ctx);
   if (route === 'new' && S.profile.coreId) return renderTripForm(ctx, null);
   if ((m = route.match(/^footprints(?:\/(\w+))?$/))) return renderFootprints(ctx, m[1]);
+  if (route === 'done') return renderDone(ctx);
   if ((m = route.match(/^trip\/([\w-]+)\/edit$/))) return renderTripForm(ctx, m[1]);
   if ((m = route.match(/^trip\/([\w-]+)$/))) return renderTrip(ctx, m[1]);
   if ((m = route.match(/^trip\/([\w-]+)\/plan$/))) return renderTripPlan(ctx, m[1]);
@@ -145,7 +146,7 @@ function render(keep = false) {
 // 旅程資料有變動時，只重畫「看資料」的頁面（表單頁不重畫，以免打到一半的字不見）
 function onTrips() {
   const route = location.hash.replace(/^#\/?/, '');
-  if (route === '' || /^footprints(\/\w+)?$/.test(route) || /^trip\/[\w-]+$/.test(route) || (/^trip\/[\w-]+\/(plan|book|list|money)$/.test(route) && !isBusy() && !document.querySelector('#sheet'))) render(true);
+  if (route === '' || route === 'done' || /^footprints(\/\w+)?$/.test(route) || /^trip\/[\w-]+$/.test(route) || (/^trip\/[\w-]+\/(plan|book|list|money)$/.test(route) && !isBusy() && !document.querySelector('#sheet'))) render(true);
 }
 function afterOnboard() {
   ensureTrips(ctx, onTrips);

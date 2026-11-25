@@ -191,12 +191,30 @@ export function renderHome(ctx) {
           : '小夥伴邀請你加入旅程後，旅程會出現在這裡。收到邀請連結就直接點開吧！'}</p></section>`
         : groups.filter(([, ts]) => ts.length).map(([k, ts]) => `<section class="sec">
             <h2 class="sec-h">${STATUS_LABEL[k]}</h2>${ts.map(t => tripCard(t, uid)).join('')}</section>`).join('')}
-      ${doneN ? `<a class="card done-link" href="#/footprints/trip"><span>已結束的旅程</span><span class="small muted row" style="gap:2px">${doneN} 趟${ic.chev}</span></a>` : ''}
+      ${doneN ? `<a class="card done-link" href="#/done"><span>已結束的旅程</span><span class="small muted row" style="gap:2px">${doneN} 趟${ic.chev}</span></a>` : ''}
       <p class="tiny faint" style="text-align:center;margin:0">小夥伴粗企玩 ${APP_VERSION}</p>
     </div>`;
     ctx.bindTop();
   };
   draw();
+}
+
+/* ───────── 已結束的旅程：跟首頁一樣的旅程卡片，依年份分開，照旅遊時間由早到晚 ───────── */
+export function renderDone(ctx) {
+  const { S } = ctx;
+  const uid = S.user.uid;
+  if (location.hash.replace(/^#\/?/, '') !== 'done') return;
+  const done = (S.trips || []).filter(t => (t.memberUids || []).includes(uid) && tripStatus(t) === 'done').sort(byStart);
+  const years = [];
+  done.forEach(t => { const y = t.start.slice(0, 4); let g = years.find(x => x[0] === y); if (!g) years.push(g = [y, []]); g[1].push(t); });
+  $('#main').innerHTML = `<div class="wrap">${ctx.topBar(`<a class="iconbtn" href="#/" aria-label="回首頁" style="margin-left:-10px">${ic.back}</a>`)}
+    <h1 class="title" style="font-size:25px">已結束的旅程</h1>
+    ${!S.trips ? '<div class="spinner" style="margin:24px auto" role="status" aria-label="載入中"></div>'
+      : !done.length ? '<section class="card empty"><p class="small muted" style="margin:0">還沒有已結束的旅程。</p></section>'
+      : years.map(([y, ts]) => `<section class="sec"><h2 class="sec-h"><span class="num">${esc(y)}</span>・${ts.length} 趟</h2>
+          ${ts.map(t => tripCard(t, uid)).join('')}</section>`).join('')}
+  </div>`;
+  ctx.bindTop();
 }
 
 /* ───────── 我的足跡：上面四個數字可以切換明細（國家、地區、集章冊、旅伴） ───────── */
