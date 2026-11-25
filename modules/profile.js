@@ -298,7 +298,7 @@ export function renderProfile(ctx) {
     </section>
     <a class="btn full" href="#/me/edit">${ic.edit}編輯個人檔案</a>
     ${core ? '' : `<a class="btn full" href="#/me/color">重做代表色測驗</a>`}
-    ${core ? `<a class="btn full" href="https://console.firebase.google.com/project/fir-app-e6f7f/firestore" target="_blank" rel="noopener">查看資料庫用量（Firebase 後台）</a>
+    ${p.coreId === 'qi' ? `<a class="btn full" href="https://console.firebase.google.com/project/fir-app-e6f7f/firestore" target="_blank" rel="noopener">查看資料庫用量（Firebase 後台）</a>
       <p class="tiny faint" style="margin:-8px 0 0;text-align:center">打開後點上方的「用量」分頁。目前是免費方案，用量超過上限只會暫停到隔天，不會收費。</p>` : ''}
     <button class="btn full danger" id="logout">${ic.out}登出</button>
     <p class="tiny faint" style="text-align:center;margin:0">${esc(ctx.S.user.email || '')}</p>

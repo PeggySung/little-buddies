@@ -13,7 +13,7 @@ import { $, esc, ic, toast, applyTheme, toggleTheme, isDark, copyText, navSlide 
 import { CORE } from './modules/color.js';
 import { setWxTrip } from './modules/weather.js';
 import { renderOnboarding, renderProfile, renderEdit, renderQuizRedo, avatarHTML } from './modules/profile.js';
-import { renderHome, renderTripForm, renderTrip, renderTripPlan, renderTripBook, renderTripChecklist, renderTripMoney, renderJoin, ensureTrips, stopTrips, cleanup, makeSync, pendingJoin } from './modules/trips.js';
+import { renderHome, renderFootprints, renderTripForm, renderTrip, renderTripPlan, renderTripBook, renderTripChecklist, renderTripMoney, renderJoin, ensureTrips, stopTrips, cleanup, makeSync, pendingJoin } from './modules/trips.js';
 
 applyTheme();
 
@@ -130,6 +130,7 @@ function render(keep = false) {
   if (route === 'me/edit') return renderEdit(ctx);
   if (route === 'me/color' && !S.profile.coreId) return renderQuizRedo(ctx);
   if (route === 'new' && S.profile.coreId) return renderTripForm(ctx, null);
+  if (route === 'footprints') return renderFootprints(ctx);
   if ((m = route.match(/^trip\/([\w-]+)\/edit$/))) return renderTripForm(ctx, m[1]);
   if ((m = route.match(/^trip\/([\w-]+)$/))) return renderTrip(ctx, m[1]);
   if ((m = route.match(/^trip\/([\w-]+)\/plan$/))) return renderTripPlan(ctx, m[1]);
@@ -144,7 +145,7 @@ function render(keep = false) {
 // 旅程資料有變動時，只重畫「看資料」的頁面（表單頁不重畫，以免打到一半的字不見）
 function onTrips() {
   const route = location.hash.replace(/^#\/?/, '');
-  if (route === '' || /^trip\/[\w-]+$/.test(route) || (/^trip\/[\w-]+\/(plan|book|list|money)$/.test(route) && !isBusy() && !document.querySelector('#sheet'))) render(true);
+  if (route === '' || route === 'footprints' || /^trip\/[\w-]+$/.test(route) || (/^trip\/[\w-]+\/(plan|book|list|money)$/.test(route) && !isBusy() && !document.querySelector('#sheet'))) render(true);
 }
 function afterOnboard() {
   ensureTrips(ctx, onTrips);
@@ -152,7 +153,9 @@ function afterOnboard() {
   location.hash = code ? `#/join/${code}` : '#/';
   render();
 }
-const ctx = { S, render, topBar, bindTop, brand, afterOnboard, inviteCode: () => pendingJoin.get(), signOut: () => { try { localStorage.removeItem(`lb-coreCheck-${S.user?.uid}`); } catch {} stopTrips(); stopAllItems(); stopAllBookings(); stopAllChecklist(); stopAllMoney(); stopAllShop(); return signOut(auth); }, setProfile: p => { S.profile = p; } };
+// 停掉所有旅程底下（行程、交通住宿、清單、記帳、購物）的即時更新；退出旅程或旅程被刪除時用
+const stopTripSubs = () => { cleanup(); stopAllItems(); stopAllBookings(); stopAllChecklist(); stopAllMoney(); stopAllShop(); };
+const ctx = { S, render, topBar, bindTop, brand, afterOnboard, stopTripSubs, inviteCode: () => pendingJoin.get(), signOut: () => { try { localStorage.removeItem(`lb-coreCheck-${S.user?.uid}`); } catch {} stopTrips(); stopTripSubs(); return signOut(auth); }, setProfile: p => { S.profile = p; } };
 ctx.afterProfileSave = makeSync(ctx);
 window.addEventListener('hashchange', () => { resetPlanUI(); render(); navSlide(); });
 
@@ -188,6 +191,10 @@ onAuthStateChanged(auth, async user => {
       S.coreId = S.profile.coreId || null;
       // 剛升級：旅程清單第一次讀到時，把新的顏色和頭像同步到自己參加的旅程
       ensureTrips(ctx, () => {
+        // 有旅程不見了（自己退出、被移出、旅程被刪除）：先停掉那些旅程的即時更新，免得一直跳「沒有權限」
+        const ids = new Set((S.trips || []).map(t => t.id));
+        if (S.tripIds && [...S.tripIds].some(x => !ids.has(x))) stopTripSubs();
+        S.tripIds = ids;
         if (needSync) { needSync = false; ctx.afterProfileSave().catch(e => console.warn('同步旅程成員資料失敗', e)); }
         onTrips();
       });

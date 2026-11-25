@@ -274,8 +274,18 @@ div.sh-main { cursor: default; }
 .utabs.who button { flex: 0 0 auto; padding: 0 10px; }
 .brk { overflow-wrap: anywhere; min-width: 0; }
 .title { overflow-wrap: anywhere; }
-.stamps { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding-top: 4px; }
-.stamp-empty { width: 64px; height: 64px; border-radius: 50%; border: 1.5px dashed var(--line2); display: flex; align-items: center; justify-content: center; }
+.stamps { display: flex; gap: min(14px, max(2px, calc((100% - 240px) / 3))); align-items: center; flex-wrap: nowrap; padding-top: 4px; } /* 最多 4 格，小手機也不換行 */
+.stamp-empty { width: 60px; height: 60px; flex-shrink: 0; border-radius: 50%; border: 1.5px dashed var(--line2); display: flex; align-items: center; justify-content: center; }
+.stamp-empty.more { flex-direction: column; gap: 0; border-color: var(--stamp); color: var(--stamp); line-height: 1.1; }
+.stamp-empty.more b { font-size: 17px; }
+.fp-card { text-decoration: none; color: var(--ink); }
+.done-link { flex-direction: row; justify-content: space-between; align-items: center; padding: 14px 16px; text-decoration: none; color: var(--ink); font-weight: 700; }
+.stamp-book { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 18px 10px; }
+.stamp-cell { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; text-decoration: none; color: var(--ink); min-width: 0; padding: 6px 2px; border-radius: 14px; }
+.stamp-cell .stamp { margin-bottom: 4px; }
+.stamp-cell b { width: 100%; }
+.stamp-cell:focus-visible { outline: 2.5px solid var(--acc); outline-offset: 2px; }
+.btn.danger-pri { background: var(--danger); color: var(--bg); }
 .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
 .stats > div { display: flex; flex-direction: column; gap: 2px; }
 .stats b { font-size: 26px; line-height: 1; }

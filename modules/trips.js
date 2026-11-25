@@ -1,10 +1,10 @@
 // 旅程：首頁列表與足跡、開新旅程、旅程頁、邀請碼、加入旅程
-import { doc, collection, query, where, onSnapshot, getDoc, setDoc, updateDoc, deleteDoc, arrayUnion,
-  serverTimestamp, Timestamp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import { doc, collection, query, where, onSnapshot, getDoc, getDocs, setDoc, updateDoc, deleteDoc, arrayUnion, arrayRemove,
+  deleteField, writeBatch, serverTimestamp, Timestamp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { $, $$, esc, ic, toast, copyText, localGet, localSet, tabFrom, tabSlide, navFrom } from './ui.js';
 import { avatarHTML } from './profile.js';
 import { adjustForPeers } from './color.js';
-import { renderPlan, watchItems, isBusy, exitSort } from './plan.js';
+import { renderPlan, watchItems, isBusy, exitSort, openSheet, closeSheet } from './plan.js';
 import { renderBook, watchBookings } from './book.js';
 import { renderChecklist, watchChecklist } from './checklist.js';
 import { renderMoney, watchMoney } from './money.js';
@@ -24,13 +24,13 @@ export function cleanup() { unsubs.forEach(u => { try { u(); } catch {} }); unsu
 // 注意：unsubs.planFor 會隨著 unsubs = [] 一起清掉
 
 /* ───────── 旅程清單：登入後訂閱一次，一直保持即時更新 ─────────
-   小夥伴讀得到所有旅程（算「我們的足跡」用），旅伴只讀得到自己參加的 */
+   每個人（小夥伴、旅伴都一樣）只讀得到自己參加的旅程，足跡也只算自己的 */
 let tripsUnsub = null;
 export function ensureTrips(ctx, onChange) {
   const { S } = ctx;
   if (tripsUnsub && tripsUnsub.uid === S.user.uid) return;
   stopTrips();
-  const q = S.profile.coreId ? collection(S.db, 'trips') : query(collection(S.db, 'trips'), where('memberUids', 'array-contains', S.user.uid));
+  const q = query(collection(S.db, 'trips'), where('memberUids', 'array-contains', S.user.uid));
   const u = onSnapshot(q, snap => { S.trips = snap.docs.map(d => ({ id: d.id, ...d.data() })); onChange(); },
     e => { console.error(e); toast('讀取旅程失敗：' + (e?.code || e?.message)); });
   tripsUnsub = Object.assign(() => u(), { uid: S.user.uid });
@@ -123,44 +123,84 @@ function tripCard(t, uid) {
 }
 
 /* ───────── 首頁 ───────── */
+// 足跡：自己參加過、已經出發的旅程（進行中＋已結束），新的在前
+function footprints(S) {
+  const uid = S.user.uid;
+  return (S.trips || []).filter(t => (t.memberUids || []).includes(uid) && tripStatus(t) !== 'plan')
+    .sort((a, b) => b.start.localeCompare(a.start));
+}
+function fpStats(S, fp) {
+  const countries = new Set(), regions = new Set(), people = new Set();
+  fp.forEach(t => { (t.places || []).forEach(p => { const k = p.country === OTHER ? p.countryName : p.country; countries.add(k); regions.add(k + '/' + (p.city || '')); });
+    (t.memberUids || []).forEach(m => people.add(m)); });
+  people.delete(S.user.uid); // 旅伴不算自己
+  return `<div class="stats">${[[countries.size, '國家'], [regions.size, '地區'], [fp.length, '趟旅程'], [people.size, '位旅伴']]
+    .map(([n, l]) => `<div><b class="num">${n}</b><span class="tiny faint">${l}</span></div>`).join('')}</div>`;
+}
+const ROT = [-9, 7, -4, 10, -12, 5, -7, 12, -3];
 export function renderHome(ctx) {
   const { S } = ctx;
   const uid = S.user.uid;
   const core = !!S.profile.coreId;
   const draw = () => {
     if (location.hash.replace(/^#\/?/, '') !== '') return;
-    const all = S.trips;
-    const mine = all ? all.filter(t => (t.memberUids || []).includes(uid)) : null;
-    const groups = mine ? ['now', 'plan', 'done'].map(k => [k, mine.filter(t => tripStatus(t) === k)
-      .sort((a, b) => k === 'done' ? b.start.localeCompare(a.start) : a.start.localeCompare(b.start))]) : [];
-    // 足跡：已經出發過的旅程（小夥伴看全部，旅伴看自己的）
-    const fp = (all || []).filter(t => (core || (t.memberUids || []).includes(uid)) && tripStatus(t) !== 'plan')
-      .sort((a, b) => b.start.localeCompare(a.start));
-    const countries = new Set(), regions = new Set(), people = new Set();
-    fp.forEach(t => { (t.places || []).forEach(p => { const k = p.country === OTHER ? p.countryName : p.country; countries.add(k); regions.add(k + '/' + (p.city || '')); });
-      (t.memberUids || []).forEach(m => people.add(m)); });
-    const stats = [[countries.size, '國家'], [regions.size, '地區'], [fp.length, '趟旅程'], [people.size, '位旅伴']];
+    const mine = S.trips ? S.trips.filter(t => (t.memberUids || []).includes(uid)) : null;
+    // 首頁只放進行中、規劃中；已結束的收進「我的足跡」
+    const groups = mine ? ['now', 'plan'].map(k => [k, mine.filter(t => tripStatus(t) === k).sort((a, b) => a.start.localeCompare(b.start))]) : [];
+    const doneN = mine ? mine.filter(t => tripStatus(t) === 'done').length : 0;
+    const active = groups.reduce((n, [, ts]) => n + ts.length, 0);
+    const fp = footprints(S);
+    // 郵票最多放 4 格：3 枚以內＋「下一站」；超過就放最新 3 枚＋「+N」
+    const shown = fp.length > 4 ? fp.slice(0, 3) : fp.slice(0, 4);
+    const tail = fp.length > 4 ? `<div class="stamp-empty more"><b class="num">+${fp.length - 3}</b><span class="tiny">全部</span></div>`
+      : fp.length < 4 ? '<div class="stamp-empty small faint">下一站</div>' : '';
     $('#main').innerHTML = `<div class="wrap">${ctx.topBar(ctx.brand)}
       <div><div class="small muted">嗨，${esc(S.profile.nickname)}</div>
         <h1 class="title" style="font-size:25px;line-height:1.35">下一趟想去哪裡粗企玩？</h1></div>
-      <section class="card">
-        <div class="row" style="justify-content:space-between"><h2 class="title" style="font-size:17px">${core ? '我們的足跡' : '我的足跡'}</h2></div>
-        <div class="stats">${stats.map(([n, l]) => `<div><b class="num">${n}</b><span class="tiny faint">${l}</span></div>`).join('')}</div>
-        <div class="stamps">${fp.slice(0, 5).map((t, i) => stampHTML(t, 70, [-9, 7, -4, 10, -12][i])).join('')}
-          <div class="stamp-empty small faint">下一站</div></div>
-      </section>
+      <a class="card fp-card" href="#/footprints" aria-label="我的足跡：看全部郵票和已結束的旅程">
+        <div class="row" style="justify-content:space-between"><h2 class="title" style="font-size:17px">我的足跡</h2>
+          <span class="small muted row" style="gap:2px">${fp.length ? '集章冊' : ''}${ic.chev}</span></div>
+        ${fpStats(S, fp)}
+        <div class="stamps">${shown.map((t, i) => stampHTML(t, 60, ROT[i])).join('')}${tail}</div>
+      </a>
       ${core ? `<a class="btn pri full" href="#/new">${ic.plus}開新旅程</a>` : ''}
       ${!mine ? '<div class="spinner" style="margin:24px auto" role="status" aria-label="載入中"></div>'
-        : mine.length === 0 ? `<section class="card empty"><p class="small muted" style="margin:0">${core
-          ? '還沒有旅程。按上面的「開新旅程」開始規劃，再邀請小夥伴和旅伴加入。'
+        : active === 0 ? `<section class="card empty"><p class="small muted" style="margin:0">${doneN
+          ? (core ? '目前沒有規劃中的旅程。按上面的「開新旅程」開始規劃下一趟吧！' : '目前沒有規劃中的旅程。小夥伴邀請你加入下一趟後，會出現在這裡。')
+          : core ? '還沒有旅程。按上面的「開新旅程」開始規劃，再邀請小夥伴和旅伴加入。'
           : '小夥伴邀請你加入旅程後，旅程會出現在這裡。收到邀請連結就直接點開吧！'}</p></section>`
         : groups.filter(([, ts]) => ts.length).map(([k, ts]) => `<section class="sec">
             <h2 class="sec-h">${STATUS_LABEL[k]}</h2>${ts.map(t => tripCard(t, uid)).join('')}</section>`).join('')}
+      ${doneN ? `<a class="card done-link" href="#/footprints"><span>已結束的旅程</span><span class="small muted row" style="gap:2px">${doneN} 趟${ic.chev}</span></a>` : ''}
       <p class="tiny faint" style="text-align:center;margin:0">小夥伴粗企玩 ${APP_VERSION}</p>
     </div>`;
     ctx.bindTop();
   };
   draw();
+}
+
+/* ───────── 我的足跡（集章冊）：全部郵票，依年份分開；點郵票進那趟旅程 ───────── */
+export function renderFootprints(ctx) {
+  const { S } = ctx;
+  if (location.hash.replace(/^#\/?/, '') !== 'footprints') return;
+  const fp = footprints(S);
+  const years = [];
+  fp.forEach(t => { const y = t.start.slice(0, 4); let g = years.find(x => x[0] === y); if (!g) years.push(g = [y, []]); g[1].push(t); });
+  $('#main').innerHTML = `<div class="wrap">${ctx.topBar(`<a class="iconbtn" href="#/" aria-label="回首頁" style="margin-left:-10px">${ic.back}</a>`)}
+    <h1 class="title" style="font-size:25px">我的足跡</h1>
+    <section class="card">${fpStats(S, fp)}</section>
+    ${!S.trips ? '<div class="spinner" style="margin:24px auto" role="status" aria-label="載入中"></div>'
+      : !fp.length ? '<section class="card empty"><p class="small muted" style="margin:0">還沒有足跡。出發旅行後，這裡會蓋上第一枚郵票！</p></section>'
+      : years.map(([y, ts]) => `<section class="sec">
+          <h2 class="sec-h"><span class="num">${esc(y)}</span>・${ts.length} 趟</h2>
+          <div class="stamp-book">${ts.map((t, i) => `<a class="stamp-cell" href="#/trip/${esc(t.id)}">
+              ${stampHTML(t, 76, ROT[i % ROT.length])}
+              <b class="small ellip">${esc(t.name)}</b>
+              <span class="tiny faint num">${fmtRange(t.start, t.end)}</span>
+              ${tripStatus(t) === 'now' ? `<span class="chip">${STATUS_LABEL.now}</span>` : ''}
+            </a>`).join('')}</div></section>`).join('')}
+  </div>`;
+  ctx.bindTop();
 }
 
 /* ───────── 開新旅程／編輯旅程 ───────── */
@@ -250,9 +290,10 @@ export function renderTripForm(ctx, tripId) {
     } catch (e) { b.disabled = false; toast('存檔失敗：' + (e?.code || e?.message)); }
   });
   $('#delTrip')?.addEventListener('click', async () => {
-    if (!confirm(`確定要刪除「${editing.name}」嗎？刪除後無法復原。`)) return;
-    try { await deleteDoc(doc(S.db, 'trips', tripId)); form = null; location.hash = '#/'; toast('已刪除'); }
-    catch (e) { toast('刪除失敗：' + (e?.code || e?.message)); }
+    if (!confirm(`確定要刪除「${editing.name}」嗎？行程、交通住宿、清單、記帳會全部刪除，無法復原。`)) return;
+    const b = $('#delTrip'); b.disabled = true; b.textContent = '刪除中…';
+    try { await deleteTripAll(ctx, editing); form = null; location.hash = '#/'; toast('已刪除'); }
+    catch (e) { b.disabled = false; b.textContent = '刪除這趟旅程'; toast('刪除失敗：' + (e?.code || e?.message)); }
   });
 }
 function validateTrip(f) {
@@ -305,7 +346,7 @@ export function renderTrip(ctx, id) {
         ${ms.map(([k, m]) => `<div class="row">${avatarHTML(m)}<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">
             <b>${esc(m.nickname)}${k === uid ? '<span class="small faint">（你）</span>' : ''}</b>
             <span class="tiny faint">${[m.role === 'owner' ? '建立者' : '', m.coreId ? '小夥伴' : '旅伴', m.driver ? '會開車' : '', m.colorAdjusted ? '這趟顏色有微調' : ''].filter(Boolean).join('・')}</span>
-          </div></div>`).join('')}
+          </div>${owner && k !== uid ? `<button type="button" class="btn sm" data-kick="${esc(k)}" aria-label="把${esc(m.nickname)}移出這趟旅程">移出</button>` : ''}</div>`).join('')}
         ${ms.length === 1 ? '<p class="tiny faint" style="margin:0">目前只有你一個人，就是獨旅。邀請旅伴加入後，記帳會自動出現分攤和結算。</p>' : ''}
       </section>
       ${owner ? `<section class="card">
@@ -323,11 +364,14 @@ export function renderTrip(ctx, id) {
         <p class="tiny faint" style="margin:0">連結 ${INVITE_DAYS} 天後失效；不想再讓人加入，按「停用」就好。</p>
       </section>` : ''}
       ${owner ? `<a class="btn full" href="#/trip/${esc(id)}/edit">${ic.edit}編輯旅程</a>` : ''}
+      ${member ? `<button type="button" class="btn full danger" id="leaveTrip">${ic.out}退出這趟旅程</button>` : ''}
       ${!member ? '<p class="tiny faint" style="text-align:center;margin:0">你沒有參加這趟旅程，只能看摘要。</p>' : ''}
     </div>${member ? tabBar(id, 'info') : ''}`;
     if (member) $('.wrap').classList.add('has-tabs');
     ctx.bindTop(); bindTabs();
     $('#newInvite')?.addEventListener('click', () => createInvite(ctx, t));
+    $('#leaveTrip')?.addEventListener('click', () => leaveSheet(ctx, t, active));
+    $$('[data-kick]').forEach(b => b.addEventListener('click', () => kickSheet(ctx, t, b.dataset.kick, active)));
     $$('[data-share]').forEach(b => b.addEventListener('click', () => shareInvite(t, b.dataset.share, base)));
     $$('[data-off]').forEach(b => b.addEventListener('click', async () => {
       if (!confirm('停用後，這組邀請碼就不能再用來加入。確定嗎？')) return;
@@ -368,6 +412,132 @@ async function shareInvite(t, code, base) {
   const text = `一起去粗企玩！加入「${t.name}」：`;
   if (navigator.share) { try { await navigator.share({ title: '小夥伴粗企玩', text, url }); return; } catch (e) { if (e?.name === 'AbortError') return; } }
   copyText(`${text}${url}`);
+}
+
+/* ───────── 退出旅程、移出成員、刪除旅程 ─────────
+   - 一般成員：自己退出。
+   - 建立者：可以把成員移出；自己要退出時，把建立者交給另一位小夥伴；
+     這趟沒有其他小夥伴的話，整趟旅程直接刪除（不讓旅伴單獨占用資料庫）。 */
+const TRIP_SUBS = ['items', 'checklist', 'expenses', 'shop', 'shopImg', 'clients', 'settle', 'bookings'];
+const errText = e => e?.code === 'permission-denied' ? '沒有權限（Firestore 安全規則可能還沒更新）' : (e?.code || e?.message);
+// 停用自己幫這趟旅程產生、還能用的邀請碼
+async function disableMyInvites(ctx, tripId) {
+  const { S } = ctx;
+  const snap = await getDocs(query(collection(S.db, 'invites'), where('createdBy', '==', S.user.uid), where('tripId', '==', tripId)));
+  const live = snap.docs.filter(d => !d.data().disabled);
+  if (!live.length) return 0;
+  const batch = writeBatch(S.db);
+  live.forEach(d => batch.update(d.ref, { disabled: true }));
+  await batch.commit();
+  return live.length;
+}
+// 刪除整趟旅程：先刪掉底下的行程、清單、記帳…，再刪旅程本身（Firestore 不會自動刪子資料）
+export async function deleteTripAll(ctx, t) {
+  const { S } = ctx;
+  ctx.stopTripSubs?.();
+  for (const sub of TRIP_SUBS) {
+    const snap = await getDocs(collection(S.db, 'trips', t.id, sub));
+    for (let i = 0; i < snap.docs.length; i += 400) {
+      const batch = writeBatch(S.db);
+      snap.docs.slice(i, i + 400).forEach(d => batch.delete(d.ref));
+      await batch.commit();
+    }
+  }
+  try { await disableMyInvites(ctx, t.id); } catch (e) { console.warn('停用邀請碼失敗', e); }
+  await deleteDoc(doc(S.db, 'trips', t.id));
+}
+const sheetHead = title => `<div class="sheet-h"><h3 class="title">${title}</h3><button class="iconbtn" data-close aria-label="關閉">✕</button></div>`;
+// 勾選框不算「填到一半」，關掉視窗時不用跳「還沒儲存」
+const quietInputs = s => $$('input', s).forEach(el => ['input', 'change'].forEach(ev => el.addEventListener(ev, e => e.stopPropagation())));
+
+function leaveSheet(ctx, t, activeInvites) {
+  const { S } = ctx;
+  const uid = S.user.uid;
+  const owner = t.ownerUid === uid;
+  const others = Object.entries(t.members || {}).filter(([k]) => k !== uid && (t.memberUids || []).includes(k));
+  const heirs = others.filter(([, m]) => m.coreId);
+  const lose = `退出後你就看不到「${esc(t.name)}」的行程、交通住宿、清單和記帳了${tripStatus(t) === 'plan' ? '' : '，你的足跡也會少一枚郵票'}。`;
+  // ── 一般成員 ──
+  if (!owner) {
+    openSheet(`${sheetHead('退出這趟旅程？')}
+      <p class="warn" style="margin:0">${lose}</p>
+      <p class="small muted" style="margin:0">你記過的帳、新增的項目會留在旅程裡，其他人還看得到。之後想回來，要請建立者再傳一次邀請連結。</p>
+      <div class="sheet-acts"><button class="btn" data-close>先不要</button><button class="btn pri danger-pri" id="lvGo">確定退出</button></div>`, s => {
+      $('#lvGo', s).addEventListener('click', async () => {
+        const b = $('#lvGo', s); b.disabled = true;
+        try {
+          ctx.stopTripSubs?.();
+          await updateDoc(doc(S.db, 'trips', t.id), { memberUids: arrayRemove(uid), [`members.${uid}`]: deleteField(), updatedAt: serverTimestamp() });
+          closeSheet(true); location.hash = '#/'; toast(`已退出「${t.name}」`);
+        } catch (e) { b.disabled = false; toast('退出失敗：' + errText(e)); }
+      });
+    });
+    return;
+  }
+  // ── 建立者，有其他小夥伴可以接手 ──
+  if (heirs.length) {
+    let to = heirs[0][0];
+    openSheet(`${sheetHead('退出這趟旅程？')}
+      <p class="small muted" style="margin:0">你是建立者，退出前要把<b>建立者</b>交給這趟的另一位小夥伴（之後由他編輯旅程、產生邀請連結、移出成員）。</p>
+      <div class="field"><span id="lblHeir">交給誰</span><div class="mem-pick" role="radiogroup" aria-labelledby="lblHeir">
+        ${heirs.map(([k, m]) => `<button type="button" class="mem" role="radio" data-heir="${esc(k)}" aria-pressed="${k === to}" aria-checked="${k === to}">${avatarHTML(m, 'sm')}<span>${esc(m.nickname)}</span></button>`).join('')}</div></div>
+      <p class="warn" style="margin:0">${lose}${activeInvites.length ? '你產生的邀請連結也會一起停用，新的建立者可以再產生。' : ''}</p>
+      <div class="sheet-acts"><button class="btn" data-close>先不要</button><button class="btn pri danger-pri" id="lvGo">交給${esc(heirs[0][1].nickname)}並退出</button></div>`, s => {
+      $$('[data-heir]', s).forEach(b => b.addEventListener('click', () => {
+        to = b.dataset.heir;
+        $$('[data-heir]', s).forEach(x => { const on = x.dataset.heir === to; x.setAttribute('aria-pressed', String(on)); x.setAttribute('aria-checked', String(on)); });
+        $('#lvGo', s).textContent = `交給${t.members[to].nickname}並退出`;
+      }));
+      $('#lvGo', s).addEventListener('click', async () => {
+        const b = $('#lvGo', s); b.disabled = true;
+        try {
+          try { await disableMyInvites(ctx, t.id); } catch (e) { console.warn('停用邀請碼失敗', e); }
+          ctx.stopTripSubs?.();
+          await updateDoc(doc(S.db, 'trips', t.id), { ownerUid: to, memberUids: arrayRemove(uid), [`members.${uid}`]: deleteField(),
+            [`members.${to}.role`]: 'owner', updatedAt: serverTimestamp() });
+          closeSheet(true); location.hash = '#/'; toast(`已退出，建立者交給${t.members[to].nickname}了`);
+        } catch (e) { b.disabled = false; toast('退出失敗：' + errText(e)); }
+      });
+    });
+    return;
+  }
+  // ── 建立者，沒有其他小夥伴：整趟刪除 ──
+  const guests = others.map(([, m]) => m.nickname);
+  openSheet(`${sheetHead('退出會刪除整趟旅程')}
+    <p class="warn" style="margin:0"><b>這趟旅程沒有其他小夥伴可以接手</b>，你退出後「${esc(t.name)}」會直接刪除：行程、交通住宿、清單、購物清單、記帳全部刪掉，<b>無法復原</b>。</p>
+    ${guests.length ? `<p class="small muted" style="margin:0">旅伴 ${guests.map(esc).join('、')} 也會一起看不到這趟旅程。想保留的話，先邀請另一位小夥伴加入，再把建立者交給他。</p>` : ''}
+    <label class="row small" style="gap:8px;align-items:flex-start"><input type="checkbox" id="lvAck" style="margin-top:3px"> 我知道整趟旅程會被刪除，無法復原</label>
+    <div class="sheet-acts"><button class="btn" data-close>先不要</button><button class="btn pri danger-pri" id="lvGo" disabled>刪除旅程並退出</button></div>`, s => {
+    quietInputs(s);
+    $('#lvAck', s).addEventListener('change', e => { $('#lvGo', s).disabled = !e.target.checked; });
+    $('#lvGo', s).addEventListener('click', async () => {
+      const b = $('#lvGo', s); b.disabled = true; b.textContent = '刪除中…';
+      try { await deleteTripAll(ctx, t); closeSheet(true); location.hash = '#/'; toast(`「${t.name}」已刪除`); }
+      catch (e) { b.disabled = false; b.textContent = '刪除旅程並退出'; toast('刪除失敗：' + errText(e)); }
+    });
+  });
+}
+
+function kickSheet(ctx, t, k, activeInvites) {
+  const { S } = ctx;
+  const m = t.members?.[k]; if (!m) return;
+  const n = activeInvites.length;
+  openSheet(`${sheetHead(`把${esc(m.nickname)}移出？`)}
+    <div class="row">${avatarHTML(m)}<div class="small muted" style="flex:1">${esc(m.nickname)}・${m.coreId ? '小夥伴' : '旅伴'}</div></div>
+    <p class="warn" style="margin:0">移出後，${esc(m.nickname)}就看不到「${esc(t.name)}」的行程、交通住宿、清單和記帳了。</p>
+    <p class="small muted" style="margin:0">他記過的帳、新增的項目會留在旅程裡；記帳裡會顯示「（已離開）」。</p>
+    ${n ? `<label class="row small" style="gap:8px;align-items:flex-start"><input type="checkbox" id="kkInv" checked style="margin-top:3px"> 同時停用目前有效的 ${n} 組邀請連結（不然他可以用連結再加入）</label>` : ''}
+    <div class="sheet-acts"><button class="btn" data-close>先不要</button><button class="btn pri danger-pri" id="kkGo">移出</button></div>`, s => {
+    quietInputs(s);
+    $('#kkGo', s).addEventListener('click', async () => {
+      const b = $('#kkGo', s); b.disabled = true;
+      try {
+        await updateDoc(doc(S.db, 'trips', t.id), { memberUids: arrayRemove(k), [`members.${k}`]: deleteField(), updatedAt: serverTimestamp() });
+        if ($('#kkInv', s)?.checked) { try { await disableMyInvites(ctx, t.id); } catch (e) { console.warn('停用邀請碼失敗', e); } }
+        closeSheet(); toast(`已把${m.nickname}移出`);
+      } catch (e) { b.disabled = false; toast('移出失敗：' + errText(e)); }
+    });
+  });
 }
 
 /* ───────── 加入旅程 ───────── */
