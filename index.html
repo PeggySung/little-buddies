@@ -95,6 +95,18 @@ h1, h2, h3 { margin: 0; font-weight: 400; }
 /* 旅程 */
 .trip { text-decoration: none; color: var(--ink); }
 .trip-top { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+/* 旅程卡片下半部：淺米色圓角區塊 */
+.trip-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; background: #F5F1E8; border-radius: 14px; padding: 8px 8px 8px 10px; margin: 0 -4px -4px; }
+[data-theme="dark"] .trip-foot { background: var(--sunk); }
+.trip-foot .stack .av { box-shadow: 0 0 0 2px #fff; }
+[data-theme="dark"] .trip-foot .stack .av { box-shadow: 0 0 0 2px var(--card); }
+.trip-foot .muted-chip { background: #fff; }
+[data-theme="dark"] .trip-foot .muted-chip { background: var(--card); }
+.trip-foot .now-chip { background: var(--acc); color: #3A2600; }
+.trip-foot .cd { gap: 3px; } /* 倒數：淺暖黃底，數字放大 */
+.trip-foot .cd b { font-family: var(--f-num); font-size: 14px; font-weight: 800; line-height: 1; }
+.trip-go { display: flex; color: var(--ink3); }
+.live-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #22B573; margin-left: 6px; vertical-align: 1px; box-shadow: 0 0 0 3px rgba(34,181,115,.18); }
 .stamp { --s: 72px; width: var(--s); height: var(--s); flex-shrink: 0; border-radius: 50%; border: 2px solid var(--stamp); color: var(--stamp); padding: calc(var(--s) * .055); box-sizing: border-box; opacity: .92; }
 .stamp > div { width: 100%; height: 100%; border-radius: 50%; border: 1px dashed var(--stamp); display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; }
 .stamp b { font-size: calc(var(--s) * .12); letter-spacing: .06em; line-height: 1.2; white-space: nowrap; max-width: 86%; overflow: hidden; }

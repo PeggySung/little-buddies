@@ -101,9 +101,14 @@ function avatarsRow(t, max = 6) {
   const more = ms.length > max ? `<span class="av sm more">+${ms.length - max}</span>` : '';
   return `<div class="stack">${ms.slice(0, max).map(m => avatarHTML(m, 'sm')).join('')}${more}</div>`;
 }
+// 旅程卡片：下半部是淺米色區塊（旅伴頭像＋狀態標籤＋箭頭）
+// 狀態標籤不再重複「旅行中／規劃中」：旅行中顯示第幾天，規劃中顯示倒數幾天，已結束不顯示
 function tripCard(t, uid) {
   const st = tripStatus(t);
-  const chip = st === 'done' ? '' : `<span class="chip">${STATUS_LABEL[st]}</span>`;
+  const today = todayIn(t.tz);
+  const left = dayCount(today, t.start) - 1; // 離出發還有幾天（依旅程當地日期）
+  const chip = st === 'now' ? `<span class="chip now-chip">Day ${dayCount(t.start, today)} / 共 ${dayCount(t.start, t.end)} 天</span>`
+    : st === 'plan' ? `<span class="chip cd">${left === 1 ? '明天出發' : `倒數 <b>${left}</b> 天`}</span>` : '';
   const solo = (t.memberUids || []).length === 1;
   return `<a class="card trip" href="#/trip/${esc(t.id)}">
     <div class="trip-top">
@@ -112,12 +117,11 @@ function tripCard(t, uid) {
         <div class="small muted brk">${esc(placesText(t.places))}</div>
         <div class="num small muted" style="font-weight:700">${fmtRange(t.start, t.end)} · ${dayCount(t.start, t.end)} 天</div>
       </div>
-      ${stampHTML(t, 56, 12)}
+      ${stampHTML(t, 56, -8)}
     </div>
-    <div class="dash"></div>
-    <div class="row" style="justify-content:space-between">
+    <div class="trip-foot">
       ${avatarsRow(t)}
-      <div class="row" style="gap:6px">${solo ? '<span class="chip muted-chip">獨旅</span>' : ''}${chip}${(t.memberUids || []).includes(uid) ? '' : '<span class="chip muted-chip">沒有參加</span>'}</div>
+      <div class="row" style="gap:6px">${solo ? '<span class="chip muted-chip">獨旅</span>' : ''}${chip}<span class="trip-go" aria-hidden="true">${ic.chev}</span></div>
     </div>
   </a>`;
 }
@@ -190,7 +194,7 @@ export function renderHome(ctx) {
           : core ? '還沒有旅程。按上面的「開新旅程」開始規劃，再邀請小夥伴和旅伴加入。'
           : '小夥伴邀請你加入旅程後，旅程會出現在這裡。收到邀請連結就直接點開吧！'}</p></section>`
         : groups.filter(([, ts]) => ts.length).map(([k, ts]) => `<section class="sec">
-            <h2 class="sec-h">${STATUS_LABEL[k]}</h2>${ts.map(t => tripCard(t, uid)).join('')}</section>`).join('')}
+            <h2 class="sec-h">${STATUS_LABEL[k]}${k === 'now' ? '<span class="live-dot" aria-hidden="true"></span>' : ''}</h2>${ts.map(t => tripCard(t, uid)).join('')}</section>`).join('')}
       ${doneN ? `<a class="card done-link" href="#/done"><span>已結束的旅程</span><span class="small muted row" style="gap:2px">${doneN} 趟${ic.chev}</span></a>` : ''}
       <p class="tiny faint" style="text-align:center;margin:0">小夥伴粗企玩 ${APP_VERSION}</p>
     </div>`;
