@@ -81,6 +81,14 @@ export function bookingEvents(tripId, date) {
   return out;
 }
 
+// 給天氣判斷地區用：某一天交通住宿裡的文字；stays 是當晚住的地方（入住日 ≤ 這天 < 退房日）
+export function dayTexts(tripId, date) {
+  const texts = bookingEvents(tripId, date).map(e => `${e.title} ${e.sub}`);
+  const stays = (cache[tripId]?.list || []).filter(b => b.type === 'stay' && b.inDate && b.inDate <= date && (!b.outDate || date < b.outDate))
+    .map(b => `${b.name || ''} ${b.address || ''}`);
+  return { texts: [...texts, ...stays], stays };
+}
+
 /* ───────── 列表 ───────── */
 export function renderBook(ctx, t, focusId) {
   const list = cache[t.id]?.list;

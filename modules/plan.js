@@ -2,8 +2,8 @@
 import { doc, collection, onSnapshot, setDoc, updateDoc, deleteDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { $, $$, esc, ic, toast, copyText, localGet, localSet } from './ui.js';
 import { todayIn, dayCount, tripStatus } from './places.js';
-import { bookingEvents } from './book.js';
-import { mountDayWx } from './weather.js';
+import { bookingEvents, dayTexts } from './book.js';
+import { mountDayWx, setTodayPlace } from './weather.js';
 
 // 類型圖示：11/20 改成自己畫的線條 SVG（跟底部分頁同一套粗細），顏色跟著深淺色主題
 const KINDS = {
@@ -238,6 +238,24 @@ export function watchItems(ctx, tripId, onChange) {
 }
 export function stopAllItems() { Object.values(cache).forEach(c => c.unsub?.()); Object.keys(cache).forEach(k => delete cache[k]); }
 
+/* ───────── 天氣用哪個地區 ─────────
+   旅程有好幾個地區時，看這天的行程（名稱、地點、備註）和交通住宿裡，哪個地區的名字出現最多次；
+   一樣多時以當晚住的地方為準；都沒有出現就用旅程的第一個地區（預設） */
+export function dayPlace(t, date, dayItems) {
+  const cand = (t.places || []).map((p, i) => ({ i, c: (p.city || '').trim() })).filter(x => x.c);
+  const def = cand.length ? cand[0].i : 0;
+  if (new Set(cand.map(x => x.c)).size < 2) return { pi: def, auto: false, multi: false };
+  const { texts, stays } = dayTexts(t.id, date);
+  const all = [...dayItems.map(x => [x.title, x.map, x.note].join(' ')), ...texts].map(s => s.toLowerCase());
+  const st = stays.join(' ').toLowerCase();
+  let best = null;
+  cand.forEach(x => {
+    const k = x.c.toLowerCase(), n = all.filter(s => s.includes(k)).length, sb = st.includes(k) ? 1 : 0;
+    if (n && (!best || n > best.n || (n === best.n && sb > best.sb))) best = { ...x, n, sb };
+  });
+  return best ? { pi: best.i, auto: true, multi: true } : { pi: def, auto: false, multi: true };
+}
+
 /* ───────── 畫面 ───────── */
 export function renderPlan(ctx, t, sortDay = null) {
   const { S } = ctx;
@@ -297,7 +315,9 @@ export function renderPlan(ctx, t, sortDay = null) {
   $('#roStart')?.addEventListener('click', () => { sortFromPlan = true; location.hash = `#/trip/${t.id}/plan/sort/${day}`; });
   $$('[data-edit]').forEach(b => b.addEventListener('click', () => editItem(ctx, t, (cache[t.id].items || []).find(x => x.id === b.dataset.edit), day, japan)));
   $$('[data-copy]').forEach(b => b.addEventListener('click', () => copyText(b.dataset.copy)));
-  mountDayWx(t, dinfo);
+  mountDayWx(t, dinfo && { ...dinfo, ...dayPlace(t, dinfo.date, items) });
+  // 天氣背景：旅行中的今天也用判斷出來的地區
+  if (todayDay) setTodayPlace(t, dayPlace(t, today, (cache[t.id]?.items || []).filter(x => x.day === todayDay)).pi);
   centerDay(false);
   if ((marks.now || marks.next) && !renderPlan.scrolled?.[t.id]) {
     renderPlan.scrolled = { ...(renderPlan.scrolled || {}), [t.id]: true };

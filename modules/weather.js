@@ -2,7 +2,8 @@
 // 資料來源：OpenStreetMap Nominatim（地點）、Open-Meteo（天氣預報、潮汐），都免費、不用金鑰
 // 天氣背景預設關閉，每支手機在「我的」頁自己打開（存在這支手機上）
 import { $, esc, localGet, localSet } from './ui.js';
-import { countryBy } from './places.js';
+import { countryBy, todayIn } from './places.js';
+import { openSheet } from './plan.js';
 
 /* ───────── 背景效果設定 ───────── */
 export const BG_MODES = [
@@ -14,7 +15,7 @@ export const bgMode = () => { const v = localGet('wxbg'); return v === 'anim' ||
 export function setBgMode(v) { localSet('wxbg', v === 'anim' || v === 'color' ? v : null); refreshBg(true); }
 
 /* ───────── 小工具 ───────── */
-const OTHER = 'OTHER';
+const OTHER = 'OT'; // 「其他國家」（跟 trips.js 一樣）
 const pad2 = n => String(n).padStart(2, '0');
 const hm = m => { m = ((Math.round(m) % 1440) + 1440) % 1440; return `${pad2(Math.floor(m / 60))}:${pad2(m % 60)}`; };
 const isoMin = s => (/T(\d{2}):(\d{2})/.exec(s || '') ? +RegExp.$1 * 60 + +RegExp.$2 : null);
@@ -84,10 +85,10 @@ function wmo(code) {
   return { n: '多雲', k: 'cloudy' };
 }
 
-/* ───────── 地點：旅程第一個目的地（有城市用城市，沒有用國家） ───────── */
-function placeOf(t) {
+/* ───────── 地點：指定第幾個目的地；沒指定就用第一個有填城市的（有城市用城市，沒有用國家） ───────── */
+function placeOf(t, pi = null) {
   const ps = t.places || [];
-  const p = ps.find(x => (x.city || '').trim()) || ps[0];
+  const p = (pi != null && ps[pi]) || ps.find(x => (x.city || '').trim()) || ps[0];
   if (!p) return null;
   const c = countryBy(p.country);
   const cname = p.country === OTHER ? (p.countryName || '') : (c ? c.name : '');
@@ -163,12 +164,13 @@ async function marine(g) {
 }
 
 // 每趟旅程的天氣資料（記在記憶體裡，畫面重畫時不用再等）
+// 一趟旅程可能有好幾個地區，每個地區分開記
 const memo = new Map();
-function tripWx(t) {
-  const pl = placeOf(t);
+function tripWx(t, pi = null) {
+  const pl = placeOf(t, pi);
   if (!pl) return { state: 'none' };
-  let m = memo.get(t.id);
-  if (m && m.key !== pl.key) { memo.delete(t.id); m = null; }
+  const mk = t.id + '|' + pl.key;
+  let m = memo.get(mk);
   if (!m || (m.data && Date.now() - m.at > 30 * 60000 && !m.p)) {
     m = m || { key: pl.key, pl };
     m.p = (async () => {
@@ -177,7 +179,7 @@ function tripWx(t) {
       const [f, mr, aq] = await Promise.all([forecast(g), marine(g), airq(g)]);
       m.data = { pl, g, f, m: mr, a: aq }; m.at = Date.now(); return m.data;
     })().catch(() => { m.data = { pl, g: null }; m.at = Date.now(); return m.data; }).finally(() => { m.p = null; });
-    memo.set(t.id, m);
+    memo.set(mk, m);
   }
   return m;
 }
@@ -228,26 +230,74 @@ const wxIcon = k => `<svg class="wxi" width="17" height="17" viewBox="0 0 24 24"
 const chevron = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 4.5l3 3 3-3"/></svg>';
 export function mountDayWx(t, dinfo) {
   const row = $('#wxRow'); if (!row || !dinfo) return;
-  const m = tripWx(t);
+  const m = tripWx(t, dinfo.pi);
   const draw = () => {
     if (!row.isConnected) return;
-    const d = m.data, pl = m.pl || placeOf(t);
+    const d = m.data, pl = m.pl || placeOf(t, dinfo.pi);
     if (!pl) { row.innerHTML = ''; return; }
-    // 跟 Day 1 同一行的灰色小字：天氣圖示＋天氣＋高低溫（城市名稱在頁面最上面已經有了）
-    if (!d) { row.innerHTML = '<span class="wxchip off"><span class="wxinfo">天氣讀取中…</span></span>'; return; }
-    if (!d.g) { row.innerHTML = `<span class="wxchip off" title="找不到「${esc(pl.label)}」的位置"><span class="wxinfo">看不到天氣</span></span>`; return; }
+    // 跟 Day 1 同一行的灰色小字：天氣圖示＋天氣＋高低溫；旅程有好幾個地區時，前面加上這天的地區
+    const where = dinfo.multi ? `${esc(pl.label)}・` : '';
+    if (!d) { row.innerHTML = `<span class="wxchip off"><span class="wxinfo">${where}天氣讀取中…</span></span>`; return; }
+    if (!d.g) { row.innerHTML = `<span class="wxchip off" title="找不到「${esc(pl.label)}」的位置"><span class="wxinfo">${where}看不到天氣</span></span>`; return; }
     const fd = d.f?.days?.[dinfo.date], w = fd ? wmo(fd.code) : null;
-    const txt = w ? `${esc(w.n)} <span class="num">${Math.round(fd.max)}°</span>/<span class="num">${Math.round(fd.min)}°</span>`
-      : (d.f ? '日出日落' : '天氣暫時讀不到');
+    const txt = where + (w ? `${esc(w.n)} <span class="num">${Math.round(fd.max)}°</span>/<span class="num">${Math.round(fd.min)}°</span>`
+      : (d.f ? '日出日落' : '天氣暫時讀不到'));
     const open = openFor === t.id;
     row.innerHTML = `<button class="wxchip" id="wxBtn" aria-expanded="${open}" aria-controls="wxCard" title="${esc(pl.label)}的天氣">${wxIcon(w ? w.k : 'sunrise')}<span class="wxinfo">${txt}</span>${chevron}</button>`;
     $('#wxBtn').addEventListener('click', () => { openFor = openFor === t.id ? null : t.id; draw(); });
     const card = $('#wxCard');
     card.hidden = !open;
-    if (open) card.innerHTML = (!w && d.f ? '<p class="tiny faint" style="margin:0">出發前 16 天內才有天氣預報，現在先顯示日出日落和潮汐。</p>' : '') + cardHTML(d, dinfo.date, t.tz);
+    if (open) {
+      // 最上面一行：這天用哪個地點＋右邊「?」說明
+      card.innerHTML = `<div class="wxtop"><span>${ic_pin}${esc(pl.label)}<small>${dinfo.auto ? '依這天的行程判斷' : dinfo.multi ? '預設地點' : ''}</small></span>
+        <button type="button" class="wxhelp" id="wxHelp" aria-label="天氣資料說明">?</button></div>` + cardHTML(d, dinfo.date, t.tz);
+      $('#wxHelp').addEventListener('click', () => helpSheet(t, dinfo, d, pl));
+    }
   };
   draw();
   if (m.p) m.p.then(draw);
+}
+const ic_pin = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>';
+
+/* ───────── 「?」天氣資料說明 ───────── */
+// 快取是什麼時候抓的（顯示「上次更新」）
+function cacheAt(key) { try { const o = JSON.parse(localGet(key) || 'null'); return o?.at || null; } catch { return null; } }
+const agoText = at => {
+  if (!at) return '';
+  const min = Math.round((Date.now() - at) / 60000);
+  return min < 1 ? '剛剛更新' : min < 60 ? `${min} 分鐘前更新` : min < 1440 ? `${Math.round(min / 60)} 小時前更新` : `${Math.round(min / 1440)} 天前更新`;
+};
+function helpSheet(t, dinfo, d, pl) {
+  const date = dinfo.date, tz = d.f?.tz || t.tz;
+  const ahead = Math.round((Date.parse(date + 'T00:00:00Z') - Date.parse(todayIn(tz) + 'T00:00:00Z')) / 86400000); // 這天離今天幾天
+  const k = d.g ? `${d.g.lat.toFixed(2)},${d.g.lon.toFixed(2)}` : '';
+  const fd = d.f?.days?.[date], aq = d.a?.[date], td = tidesOf(d.m, date);
+  const past = ahead < 0;
+  const fNote = fd ? '有' : past ? '已經過去的日子沒有預報' : ahead > 15 ? `還沒有：出發前 16 天內才有（這天還有 ${ahead} 天）` : '暫時讀不到';
+  const aNote = aq ? '有' : past ? '已經過去的日子沒有' : ahead > 5 ? `還沒有：今天起 6 天內才有（這天還有 ${ahead} 天）` : '這個地點暫時沒有資料';
+  const tNote = td ? '有' : !d.m ? `沒有：${esc(pl.label)}離海太遠（用城市中心點來看），只有靠海的地點才有潮汐` : past ? '已經過去的日子沒有' : `還沒有：大約今天起 9 天內才有（這天還有 ${ahead} 天）`;
+  const rows = [
+    ['天氣預報', '天氣、高低溫、體感、降雨、風、紫外線', '出發前 16 天內', '每 30 分鐘', fNote, cacheAt('wxf2:' + k)],
+    ['空氣品質', 'AQI、PM2.5、PM10', '今天起 6 天內', '每 1 小時', aNote, cacheAt('wxa:' + k)],
+    ['潮汐', '滿潮、乾潮時間和高度', '今天起約 9 天內，只有靠海的地點', '每 3 小時', tNote, cacheAt('wxm:' + k)],
+    ['日出日落', '日出、日落時間', '任何日期都有', '用位置直接算，不用上網', '有', null]
+  ];
+  const places = (t.places || []).map(p => (p.city || '').trim()).filter(Boolean);
+  openSheet(`<div class="sheet-h"><h3 class="title">天氣資料說明</h3><button class="iconbtn" data-close aria-label="關閉">✕</button></div>
+    <section class="wxhelp-sec">
+      <h4>這天用的地點：${esc(pl.label)}</h4>
+      <p>${dinfo.auto ? '這天的行程或交通住宿裡有出現這個地區的名字，所以用它。' : dinfo.multi ? '這天的行程裡還看不出在哪個地區，先用旅程的第一個地區。' : '這趟旅程只有一個地區。'}</p>
+      ${dinfo.multi ? `<p class="tiny faint">怎麼判斷：旅程有好幾個地區（${places.map(esc).join('、')}）時，看這天的行程（名稱、地點、備註）和交通住宿（含當晚住的地方）裡，哪個地區的名字出現最多次就用哪個；一樣多時以當晚住的地方為準；都沒有出現就用第一個地區。</p>` : ''}
+    </section>
+    <section class="wxhelp-sec">
+      <h4>${+date.slice(5, 7)}/${+date.slice(8)} 有哪些資料</h4>
+      <div class="wxhelp-list">${rows.map(([n, what, when, every, note, at]) => `<div class="${note === '有' ? 'ok' : ''}">
+        <div class="row" style="justify-content:space-between;gap:8px"><b>${n}</b><span class="tiny ${note === '有' ? 'okt' : 'faint'}">${note === '有' ? '✓ 有' : '—'}</span></div>
+        <span class="tiny faint">${what}</span>
+        ${note !== '有' ? `<span class="tiny">${note}</span>` : ''}
+        <span class="tiny faint">什麼時候有：${when}・更新：${every}${at ? `（${agoText(at)}）` : ''}</span></div>`).join('')}</div>
+      <p class="tiny faint">沒有網路時，會先用之前抓到的資料（天氣、潮汐 3 天內，空氣品質 1 天內）。地點的位置查到一次會記住。資料來源：Open-Meteo（天氣、空氣品質、潮汐）、OpenStreetMap（地點）。</p>
+    </section>`);
 }
 // 風：用最大陣風（km/h）分級，強風以上標出來
 function windInfo(gust) {
@@ -362,9 +412,16 @@ function stopAnim() {
   if (fallC) { fallC.destroy(); fallC = null; } fallKey = '';
   const el = $('#wxbg'); if (el) el.className = '';
 }
+// 旅行中的今天在哪個地區（行程頁算好告訴這裡），背景天氣跟著用
+const todayPlace = new Map();
+export function setTodayPlace(t, pi) {
+  if (todayPlace.get(t.id) === pi) return;
+  todayPlace.set(t.id, pi);
+  if (bgTrip?.id === t.id) { bgKey = ''; applyBg(); }
+}
 function applyBg() {
   const t = bgTrip; if (!t) return;
-  const m = tripWx(t);
+  const m = tripWx(t, todayPlace.get(t.id) ?? null);
   const go = () => {
     if (bgTrip !== t || bgMode() === 'off') return;
     const d = m.data; const el = layer();
