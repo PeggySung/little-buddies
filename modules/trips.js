@@ -137,7 +137,7 @@ function fpData(S, fp) {
   fp.forEach(t => {
     (t.places || []).forEach(p => {
       const cn = placeCountry(p);
-      const c = add(countries, cn, { name: cn, regions: new Set() }, t);
+      const c = add(countries, cn, { name: cn, code: p.country, regions: new Set() }, t);
       const city = (p.city || '').trim();
       if (city) c.regions.add(city);
       add(regions, cn + '/' + city, { name: city || cn, country: cn, whole: !city }, t);
@@ -149,8 +149,8 @@ function fpData(S, fp) {
   });
   return { countries: [...countries.values()], regions: [...regions.values()], people: [...people.values()].sort((a, b) => b.trips.length - a.trips.length) };
 }
-// 國家、地區兩個數字都打開同一個「去過的地方」明細（依國家分，裡面列地區）
-const FP_TABS = [['country', '國家', 'place'], ['region', '地區', 'place'], ['trip', '趟旅程', 'trip'], ['buddy', '位旅伴', 'buddy']];
+// 國家、地區是兩個分頁（一次只亮一個），用同一種國家卡片：「國家」預設收合，「地區」預設全部展開
+const FP_TABS = [['country', '國家', 'country'], ['region', '地區', 'region'], ['trip', '趟旅程', 'trip'], ['buddy', '位旅伴', 'buddy']];
 function fpStats(d, fp, on = null) {
   const n = { country: d.countries.length, region: d.regions.length, trip: fp.length, buddy: d.people.length };
   return `<div class="stats fp-stats" role="tablist" aria-label="足跡明細">${FP_TABS.map(([k, l, tab]) => `<a href="#/footprints/${tab}" role="tab" class="${on === tab ? 'on' : ''}" ${on === tab ? 'aria-selected="true"' : ''} aria-label="${n[k]} ${l}，看明細"><b class="num">${n[k]}</b><span class="tiny faint">${l}</span></a>`).join('')}</div>`;
@@ -197,12 +197,18 @@ export function renderHome(ctx) {
 }
 
 /* ───────── 我的足跡：上面四個數字可以切換明細（國家、地區、集章冊、旅伴） ───────── */
-const tripLine = t => `<a class="fp-trip" href="#/trip/${esc(t.id)}"><span class="ellip">${esc(t.name)}</span><span class="tiny faint num">${fmtRange(t.start, t.end)}</span></a>`;
-const tripLines = ts => `<div class="fp-trips">${[...ts].sort((a, b) => b.start.localeCompare(a.start)).map(tripLine).join('')}</div>`;
+// 國旗：用國家代碼組成國旗 emoji；「其他國家」用地球
+const flagEmoji = code => /^[A-Z]{2}$/.test(code || '') && code !== OTHER ? String.fromCodePoint(...[...code].map(ch => 0x1F1A5 + ch.charCodeAt(0))) : '🌏';
+// 展開狀態記在這次開著的 app 裡；沒點過就照分頁預設（國家收合、地區展開）
+const fpOpenState = {};
+const fpOpen = (tab, name) => fpOpenState[tab + ':' + name] ?? tab === 'region';
+// 旅程清單：淺米灰圓角區塊，旅程名稱為主，右邊日期和箭頭
+const tripLines = ts => `<div class="fp-r-trips">${[...ts].sort((a, b) => b.start.localeCompare(a.start)).map(t => `<a href="#/trip/${esc(t.id)}">
+  <span class="fp-t-name">${esc(t.name)}</span><span class="fp-t-date num">${fmtRange(t.start, t.end)}</span>${ic.chev}</a>`).join('')}</div>`;
 export function renderFootprints(ctx, tab) {
   const { S } = ctx;
   if (!/^footprints(\/\w+)?$/.test(location.hash.replace(/^#\/?/, ''))) return;
-  tab = tab === 'country' || tab === 'region' ? 'place' : ['place', 'trip', 'buddy'].includes(tab) ? tab : 'trip';
+  tab = tab === 'place' ? 'country' : ['country', 'region', 'trip', 'buddy'].includes(tab) ? tab : 'trip';
   const fp = footprints(S);
   const d = fpData(S, fp);
   let body;
@@ -219,16 +225,23 @@ export function renderFootprints(ctx, tab) {
             <span class="tiny faint num">${fmtRange(t.start, t.end)}</span>
             ${tripStatus(t) === 'now' ? `<span class="chip">${STATUS_LABEL.now}</span>` : ''}
           </a>`).join('')}</div></section>`).join('');
-  } else if (tab === 'place') {
-    // 一個國家一張卡片：國家去了幾趟，下面每個地區列出是哪幾趟
+  } else if (tab === 'country' || tab === 'region') {
     body = [...d.countries].sort((a, b) => b.trips.length - a.trips.length).map(c => {
       const rs = d.regions.filter(r => r.country === c.name).sort((a, b) => b.trips.length - a.trips.length);
-      return `<section class="card fp-item">
-        <div class="row" style="justify-content:space-between"><h2 class="title" style="font-size:19px">${esc(c.name)}</h2>
-          <span class="small muted" style="flex-shrink:0">${c.trips.length} 趟・${rs.length} 個地區</span></div>
-        ${rs.map(r => `<div class="fp-region">
-          <div class="row" style="justify-content:space-between;align-items:flex-start"><b class="brk">${esc(r.whole ? '（沒有填城市）' : r.name)}</b>${rs.length > 1 ? `<span class="tiny faint" style="flex-shrink:0">${r.trips.length} 趟</span>` : ''}</div>
-          ${tripLines(r.trips)}</div>`).join('')}</section>`;
+      const open = fpOpen(tab, c.name);
+      return `<section class="fp-country${open ? ' open' : ''}">
+        <button type="button" class="fp-c-head" data-fpc="${esc(c.name)}" aria-expanded="${open}">
+          <span class="flag" aria-hidden="true">${flagEmoji(c.code)}</span>
+          <span class="fp-c-name">${esc(c.name)}</span>
+          <span class="badge">${c.trips.length} 趟 · ${rs.length} 地區</span>
+          <span class="fp-chev" aria-hidden="true">${ic.chev}</span>
+        </button>
+        <div class="fp-c-body"><div><div class="fp-c-inner">
+          ${rs.map(r => `<div class="fp-rg">
+            <div class="fp-r-head">${ic.pin}<b class="fp-r-name">${esc(r.whole ? '（沒有填城市）' : r.name)}</b><span class="badge sm">${r.trips.length} 趟</span></div>
+            ${tripLines(r.trips)}
+          </div>`).join('')}
+        </div></div></div></section>`;
     }).join('');
   } else {
     body = d.people.length ? d.people.map(x => `<section class="card fp-item">
@@ -243,6 +256,12 @@ export function renderFootprints(ctx, tab) {
     ${body}
   </div>`;
   ctx.bindTop();
+  // 國家卡片展開／收合（不重畫整頁，用 CSS 動畫）
+  $$('[data-fpc]').forEach(b => b.addEventListener('click', () => {
+    const card = b.closest('.fp-country'), on = !card.classList.contains('open');
+    card.classList.toggle('open', on); b.setAttribute('aria-expanded', String(on));
+    fpOpenState[tab + ':' + b.dataset.fpc] = on;
+  }));
   // 切換明細不要一直疊上一頁
   $$('.fp-stats a').forEach(a => a.addEventListener('click', e => { e.preventDefault(); location.replace(a.getAttribute('href')); }));
 }
