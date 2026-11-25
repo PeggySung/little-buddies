@@ -149,10 +149,11 @@ function fpData(S, fp) {
   });
   return { countries: [...countries.values()], regions: [...regions.values()], people: [...people.values()].sort((a, b) => b.trips.length - a.trips.length) };
 }
-const FP_TABS = [['country', '國家'], ['region', '地區'], ['trip', '趟旅程'], ['buddy', '位旅伴']];
+// 國家、地區兩個數字都打開同一個「去過的地方」明細（依國家分，裡面列地區）
+const FP_TABS = [['country', '國家', 'place'], ['region', '地區', 'place'], ['trip', '趟旅程', 'trip'], ['buddy', '位旅伴', 'buddy']];
 function fpStats(d, fp, on = null) {
   const n = { country: d.countries.length, region: d.regions.length, trip: fp.length, buddy: d.people.length };
-  return `<div class="stats fp-stats" role="tablist" aria-label="足跡明細">${FP_TABS.map(([k, l]) => `<a href="#/footprints/${k}" role="tab" class="${on === k ? 'on' : ''}" ${on === k ? 'aria-selected="true"' : ''} aria-label="${n[k]} ${l}，看明細"><b class="num">${n[k]}</b><span class="tiny faint">${l}</span></a>`).join('')}</div>`;
+  return `<div class="stats fp-stats" role="tablist" aria-label="足跡明細">${FP_TABS.map(([k, l, tab]) => `<a href="#/footprints/${tab}" role="tab" class="${on === tab ? 'on' : ''}" ${on === tab ? 'aria-selected="true"' : ''} aria-label="${n[k]} ${l}，看明細"><b class="num">${n[k]}</b><span class="tiny faint">${l}</span></a>`).join('')}</div>`;
 }
 const ROT = [-9, 7, -4, 10, -12, 5, -7, 12, -3];
 export function renderHome(ctx) {
@@ -175,8 +176,7 @@ export function renderHome(ctx) {
       <div><div class="small muted">嗨，${esc(S.profile.nickname)}</div>
         <h1 class="title" style="font-size:25px;line-height:1.35">下一趟想去哪裡粗企玩？</h1></div>
       <section class="card fp-card">
-        <a class="row fp-head" href="#/footprints" style="justify-content:space-between"><h2 class="title" style="font-size:17px">我的足跡</h2>
-          <span class="small muted row" style="gap:2px">${fp.length ? '集章冊' : ''}${ic.chev}</span></a>
+        <h2 class="title" style="font-size:17px">我的足跡</h2>
         ${fpStats(fpData(S, fp), fp)}
         <a class="stamps" href="#/footprints/trip" aria-label="打開集章冊">${shown.map((t, i) => stampHTML(t, 60, ROT[i])).join('')}${tail}</a>
       </section>
@@ -202,7 +202,7 @@ const tripLines = ts => `<div class="fp-trips">${[...ts].sort((a, b) => b.start.
 export function renderFootprints(ctx, tab) {
   const { S } = ctx;
   if (!/^footprints(\/\w+)?$/.test(location.hash.replace(/^#\/?/, ''))) return;
-  tab = FP_TABS.some(([k]) => k === tab) ? tab : 'trip';
+  tab = tab === 'country' || tab === 'region' ? 'place' : ['place', 'trip', 'buddy'].includes(tab) ? tab : 'trip';
   const fp = footprints(S);
   const d = fpData(S, fp);
   let body;
@@ -219,18 +219,17 @@ export function renderFootprints(ctx, tab) {
             <span class="tiny faint num">${fmtRange(t.start, t.end)}</span>
             ${tripStatus(t) === 'now' ? `<span class="chip">${STATUS_LABEL.now}</span>` : ''}
           </a>`).join('')}</div></section>`).join('');
-  } else if (tab === 'country') {
-    body = [...d.countries].sort((a, b) => b.trips.length - a.trips.length).map(c => `<section class="card fp-item">
-        <div class="row" style="justify-content:space-between"><b>${esc(c.name)}</b><span class="small muted">${c.trips.length} 趟</span></div>
-        ${c.regions.size ? `<div class="small muted brk">${[...c.regions].map(esc).join('、')}</div>` : ''}
-        ${tripLines(c.trips)}</section>`).join('');
-  } else if (tab === 'region') {
-    const byC = [];
-    [...d.regions].sort((a, b) => b.trips.length - a.trips.length).forEach(r => { let g = byC.find(x => x[0] === r.country); if (!g) byC.push(g = [r.country, []]); g[1].push(r); });
-    body = byC.map(([cn, rs]) => `<section class="sec"><h2 class="sec-h">${esc(cn)}・${rs.length} 個地區</h2>
-        ${rs.map(r => `<section class="card fp-item">
-          <div class="row" style="justify-content:space-between"><b class="brk">${esc(r.name)}${r.whole ? '<span class="tiny faint">（沒有填城市）</span>' : ''}</b><span class="small muted" style="flex-shrink:0">${r.trips.length} 趟</span></div>
-          ${tripLines(r.trips)}</section>`).join('')}</section>`).join('');
+  } else if (tab === 'place') {
+    // 一個國家一張卡片：國家去了幾趟，下面每個地區列出是哪幾趟
+    body = [...d.countries].sort((a, b) => b.trips.length - a.trips.length).map(c => {
+      const rs = d.regions.filter(r => r.country === c.name).sort((a, b) => b.trips.length - a.trips.length);
+      return `<section class="card fp-item">
+        <div class="row" style="justify-content:space-between"><h2 class="title" style="font-size:19px">${esc(c.name)}</h2>
+          <span class="small muted" style="flex-shrink:0">${c.trips.length} 趟・${rs.length} 個地區</span></div>
+        ${rs.map(r => `<div class="fp-region">
+          <div class="row" style="justify-content:space-between;align-items:flex-start"><b class="brk">${esc(r.whole ? '（沒有填城市）' : r.name)}</b>${rs.length > 1 ? `<span class="tiny faint" style="flex-shrink:0">${r.trips.length} 趟</span>` : ''}</div>
+          ${tripLines(r.trips)}</div>`).join('')}</section>`;
+    }).join('');
   } else {
     body = d.people.length ? d.people.map(x => `<section class="card fp-item">
         <div class="row">${avatarHTML(x.m)}<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">
