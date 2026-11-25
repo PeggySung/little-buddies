@@ -278,7 +278,6 @@ div.sh-main { cursor: default; }
 .stamp-empty { width: 60px; height: 60px; flex-shrink: 0; border-radius: 50%; border: 1.5px dashed var(--line2); display: flex; align-items: center; justify-content: center; }
 .stamp-empty.more { flex-direction: column; gap: 0; border-color: var(--stamp); color: var(--stamp); line-height: 1.1; }
 .stamp-empty.more b { font-size: 17px; }
-.fp-card .stamps { text-decoration: none; color: var(--ink); }
 .fp-stats { gap: 4px; margin: -6px -8px; }
 .fp-stats > a { display: flex; flex-direction: column; gap: 2px; text-decoration: none; color: var(--ink); padding: 6px 8px; border-radius: 12px; min-width: 0; }
 .fp-stats > a:active { background: var(--sunk); }
@@ -290,7 +289,8 @@ div.sh-main { cursor: default; }
 .fp-country { background: var(--card); border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 1px 2px rgba(36,50,74,.05), 0 3px 10px rgba(36,50,74,.05); overflow: hidden; }
 .fp-c-head { width: 100%; display: flex; align-items: center; gap: 12px; padding: 14px 14px 14px 16px; background: none; border: 0; text-align: left; font: inherit; color: var(--ink); cursor: pointer; }
 .fp-c-head:focus-visible { outline: 2.5px solid var(--acc); outline-offset: -3px; border-radius: 18px; }
-.flag { width: 36px; height: 36px; flex-shrink: 0; border-radius: 50%; background: var(--sunk); border: 1px solid var(--line); display: grid; place-items: center; font-size: 21px; line-height: 1; overflow: hidden; }
+.flag { width: 36px; height: 36px; flex-shrink: 0; border-radius: 50%; background: var(--sunk); border: 1px solid var(--line); display: flex; align-items: center; justify-content: center; font-size: 21px; line-height: 1; overflow: hidden; text-align: center; }
+.flag.txt { font-family: var(--f-num); font-size: 12px; font-weight: 800; letter-spacing: .04em; color: var(--ink2); padding-left: .04em; } /* 沒有國旗 emoji 時的國家代碼 */
 .fp-c-name { flex: 1; min-width: 0; font-family: var(--f-title); font-size: 18px; overflow-wrap: anywhere; }
 .badge { flex-shrink: 0; font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 999px; background: var(--acc-soft); color: var(--acc-ink); white-space: nowrap; }
 .badge.sm { font-size: 11.5px; padding: 2px 8px; background: var(--sunk); color: var(--ink2); }
@@ -316,7 +316,7 @@ div.sh-main { cursor: default; }
 .stats.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 /* 電腦用滑鼠滑過時的顏色（手機不會套用，免得點完一直卡著） */
 @media (hover: hover) and (pointer: fine) {
-  .fp-stats > a, .fp-c-head, .fp-r-trips a, .stamp-cell, .fp-card .stamps, .done-link, .card.trip { transition: background-color .15s, border-color .15s, box-shadow .15s; }
+  .fp-stats > a, .fp-c-head, .fp-r-trips a, .stamp-cell, .done-link, .card.trip { transition: background-color .15s, border-color .15s, box-shadow .15s; }
   .fp-stats > a:not(.on):hover { background: var(--sunk); }
   .fp-stats > a.on:hover { background: var(--acc-soft); box-shadow: inset 0 0 0 1.5px var(--acc); }
   .fp-c-head:hover { background: var(--sunk); }
@@ -324,8 +324,6 @@ div.sh-main { cursor: default; }
   .fp-r-trips a:hover { background: var(--acc-soft); }
   .fp-r-trips a:hover > svg { color: var(--ink); }
   .stamp-cell:hover { background: var(--sunk); }
-  .fp-card .stamps { border-radius: 14px; }
-  .fp-card .stamps:hover { background: var(--sunk); }
   .done-link:hover, .card.trip:hover { border-color: var(--acc); }
 }
 .invite-more { align-self: center; background: none; border: 0; padding: 8px; font: inherit; font-size: 13px; color: var(--ink2); text-decoration: underline; cursor: pointer; }
