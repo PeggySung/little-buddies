@@ -295,7 +295,7 @@ export function renderFootprints(ctx, tab) {
   }
   $('#main').innerHTML = `<div class="wrap">${ctx.topBar(`<a class="iconbtn" href="#/" aria-label="回首頁" style="margin-left:-10px">${ic.back}</a>`)}
     <h1 class="title" style="font-size:25px">我的足跡</h1>
-    <section class="card">${fpStats(d, fp, tab)}</section>
+    <section class="card fp-stats-card">${fpStats(d, fp, tab)}</section>
     ${body}
   </div>`;
   ctx.bindTop();
@@ -305,8 +305,17 @@ export function renderFootprints(ctx, tab) {
     card.classList.toggle('open', on); b.setAttribute('aria-expanded', String(on));
     fpOpenState[tab + ':' + b.dataset.fpc] = on;
   }));
-  // 切換明細不要一直疊上一頁
-  $$('.fp-stats a').forEach(a => a.addEventListener('click', e => { e.preventDefault(); location.replace(a.getAttribute('href')); }));
+  // 切換明細：原地換內容（不算換頁，不跳回頂端、整頁不晃），網址跟著換但不疊上一頁；只有下面的內容淡入
+  $$('.fp-stats a').forEach(a => a.addEventListener('click', e => {
+    e.preventDefault();
+    const href = a.getAttribute('href');
+    if (location.hash === href) return;
+    const y = window.scrollY;
+    history.replaceState(null, '', href);
+    renderFootprints(ctx, href.split('/').pop());
+    window.scrollTo(0, Math.min(y, document.documentElement.scrollHeight - innerHeight));
+    $$('#main .wrap > .fp-stats-card ~ *').forEach(el => el.classList.add('fp-fade'));
+  }));
 }
 
 /* ───────── 開新旅程／編輯旅程 ───────── */

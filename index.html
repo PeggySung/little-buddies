@@ -551,6 +551,7 @@ input[type=range] { width: 100%; accent-color: var(--acc); }
 .ttabs button.slid::before, .utabs button.slid::after { animation: tabslide .28s cubic-bezier(.3,.7,.3,1); }
 @keyframes tabin { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 .tab-in { animation: tabin .22s ease-out both; }
+.fp-fade { animation: fadein .2s ease-out both; } /* 足跡切換明細：只淡入，不上下移動 */
 .tabbar .pill.slid::before { animation: tabslide .3s cubic-bezier(.3,.7,.3,1); }
 @keyframes tabpop { 0% { transform: scale(.82); } 60% { transform: scale(1.08); } 100% { transform: none; } }
 .tabbar .pill.slid svg { animation: tabpop .3s ease-out; }
@@ -573,7 +574,7 @@ input[type=range] { width: 100%; accent-color: var(--acc); }
 .dlg-bg.out { animation: fadeout .16s ease-in forwards; pointer-events: none; }
 .dlg-bg.out .dlg { animation: dlgout .16s ease-in forwards; }
 .daychip.unpicked { animation: dayunpick .25s ease-out; }
-@media (prefers-reduced-motion: reduce) { .ttabs button.slid::before, .utabs button.slid::after, .tab-in, .tabbar .pill.slid::before, .tabbar .pill.slid svg, .daychip.picked, .daychip.unpicked, .sheet-bg, .sheet-bg .sheet, .dlg-bg, .dlg-bg .dlg { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .fp-fade, .ttabs button.slid::before, .utabs button.slid::after, .tab-in, .tabbar .pill.slid::before, .tabbar .pill.slid svg, .daychip.picked, .daychip.unpicked, .sheet-bg, .sheet-bg .sheet, .dlg-bg, .dlg-bg .dlg { animation: none; } }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2s; } #toast { transition: none; } }
 
