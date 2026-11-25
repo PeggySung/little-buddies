@@ -278,7 +278,20 @@ div.sh-main { cursor: default; }
 .stamp-empty { width: 60px; height: 60px; flex-shrink: 0; border-radius: 50%; border: 1.5px dashed var(--line2); display: flex; align-items: center; justify-content: center; }
 .stamp-empty.more { flex-direction: column; gap: 0; border-color: var(--stamp); color: var(--stamp); line-height: 1.1; }
 .stamp-empty.more b { font-size: 17px; }
-.fp-card { text-decoration: none; color: var(--ink); }
+.fp-card .fp-head, .fp-card .stamps { text-decoration: none; color: var(--ink); }
+.fp-stats { gap: 4px; margin: -6px -8px; }
+.fp-stats > a { display: flex; flex-direction: column; gap: 2px; text-decoration: none; color: var(--ink); padding: 6px 8px; border-radius: 12px; min-width: 0; }
+.fp-stats > a:active { background: var(--sunk); }
+.fp-stats > a.on { background: var(--acc-soft); }
+.fp-stats > a.on .faint { color: var(--sel-ink); }
+.fp-stats > a:focus-visible { outline: 2.5px solid var(--acc); outline-offset: 0; }
+.fp-item { gap: 8px; }
+.fp-trips { display: flex; flex-direction: column; border-top: 1.5px dashed var(--line2); margin-top: 2px; }
+.fp-trip { display: flex; justify-content: space-between; align-items: center; gap: 10px; min-height: 40px; text-decoration: none; color: var(--ink); font-size: 14px; border-bottom: 1px solid var(--line); }
+.fp-trip:last-child { border-bottom: 0; }
+.fp-trip .ellip { min-width: 0; }
+.fp-trip .num { flex-shrink: 0; }
+.invite-more { align-self: center; background: none; border: 0; padding: 8px; font: inherit; font-size: 13px; color: var(--ink2); text-decoration: underline; cursor: pointer; }
 .done-link { flex-direction: row; justify-content: space-between; align-items: center; padding: 14px 16px; text-decoration: none; color: var(--ink); font-weight: 700; }
 .stamp-book { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 18px 10px; }
 .stamp-cell { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; text-decoration: none; color: var(--ink); min-width: 0; padding: 6px 2px; border-radius: 14px; }

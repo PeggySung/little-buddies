@@ -129,13 +129,30 @@ function footprints(S) {
   return (S.trips || []).filter(t => (t.memberUids || []).includes(uid) && tripStatus(t) !== 'plan')
     .sort((a, b) => b.start.localeCompare(a.start));
 }
-function fpStats(S, fp) {
-  const countries = new Set(), regions = new Set(), people = new Set();
-  fp.forEach(t => { (t.places || []).forEach(p => { const k = p.country === OTHER ? p.countryName : p.country; countries.add(k); regions.add(k + '/' + (p.city || '')); });
-    (t.memberUids || []).forEach(m => people.add(m)); });
-  people.delete(S.user.uid); // 旅伴不算自己
-  return `<div class="stats">${[[countries.size, '國家'], [regions.size, '地區'], [fp.length, '趟旅程'], [people.size, '位旅伴']]
-    .map(([n, l]) => `<div><b class="num">${n}</b><span class="tiny faint">${l}</span></div>`).join('')}</div>`;
+const placeCountry = p => p.country === OTHER ? (p.countryName || '其他') : (countryBy(p.country)?.name || p.country);
+// 把足跡整理成：國家、地區、旅伴（每一項都記得是哪幾趟）
+function fpData(S, fp) {
+  const countries = new Map(), regions = new Map(), people = new Map();
+  const add = (m, k, init, t) => { const x = m.get(k) || (m.set(k, { ...init, trips: [] }), m.get(k)); if (!x.trips.includes(t)) x.trips.push(t); return x; };
+  fp.forEach(t => {
+    (t.places || []).forEach(p => {
+      const cn = placeCountry(p);
+      const c = add(countries, cn, { name: cn, regions: new Set() }, t);
+      const city = (p.city || '').trim();
+      if (city) c.regions.add(city);
+      add(regions, cn + '/' + city, { name: city || cn, country: cn, whole: !city }, t);
+    });
+    (t.memberUids || []).filter(u => u !== S.user.uid && t.members?.[u]).forEach(u => {
+      const x = add(people, u, { uid: u }, t);
+      if (!x.m) x.m = t.members[u]; // fp 新的在前：用最近一趟的頭像和暱稱
+    });
+  });
+  return { countries: [...countries.values()], regions: [...regions.values()], people: [...people.values()].sort((a, b) => b.trips.length - a.trips.length) };
+}
+const FP_TABS = [['country', '國家'], ['region', '地區'], ['trip', '趟旅程'], ['buddy', '位旅伴']];
+function fpStats(d, fp, on = null) {
+  const n = { country: d.countries.length, region: d.regions.length, trip: fp.length, buddy: d.people.length };
+  return `<div class="stats fp-stats" role="tablist" aria-label="足跡明細">${FP_TABS.map(([k, l]) => `<a href="#/footprints/${k}" role="tab" class="${on === k ? 'on' : ''}" ${on === k ? 'aria-selected="true"' : ''} aria-label="${n[k]} ${l}，看明細"><b class="num">${n[k]}</b><span class="tiny faint">${l}</span></a>`).join('')}</div>`;
 }
 const ROT = [-9, 7, -4, 10, -12, 5, -7, 12, -3];
 export function renderHome(ctx) {
@@ -157,12 +174,12 @@ export function renderHome(ctx) {
     $('#main').innerHTML = `<div class="wrap">${ctx.topBar(ctx.brand)}
       <div><div class="small muted">嗨，${esc(S.profile.nickname)}</div>
         <h1 class="title" style="font-size:25px;line-height:1.35">下一趟想去哪裡粗企玩？</h1></div>
-      <a class="card fp-card" href="#/footprints" aria-label="我的足跡：看全部郵票和已結束的旅程">
-        <div class="row" style="justify-content:space-between"><h2 class="title" style="font-size:17px">我的足跡</h2>
-          <span class="small muted row" style="gap:2px">${fp.length ? '集章冊' : ''}${ic.chev}</span></div>
-        ${fpStats(S, fp)}
-        <div class="stamps">${shown.map((t, i) => stampHTML(t, 60, ROT[i])).join('')}${tail}</div>
-      </a>
+      <section class="card fp-card">
+        <a class="row fp-head" href="#/footprints" style="justify-content:space-between"><h2 class="title" style="font-size:17px">我的足跡</h2>
+          <span class="small muted row" style="gap:2px">${fp.length ? '集章冊' : ''}${ic.chev}</span></a>
+        ${fpStats(fpData(S, fp), fp)}
+        <a class="stamps" href="#/footprints/trip" aria-label="打開集章冊">${shown.map((t, i) => stampHTML(t, 60, ROT[i])).join('')}${tail}</a>
+      </section>
       ${core ? `<a class="btn pri full" href="#/new">${ic.plus}開新旅程</a>` : ''}
       ${!mine ? '<div class="spinner" style="margin:24px auto" role="status" aria-label="載入中"></div>'
         : active === 0 ? `<section class="card empty"><p class="small muted" style="margin:0">${doneN
@@ -171,7 +188,7 @@ export function renderHome(ctx) {
           : '小夥伴邀請你加入旅程後，旅程會出現在這裡。收到邀請連結就直接點開吧！'}</p></section>`
         : groups.filter(([, ts]) => ts.length).map(([k, ts]) => `<section class="sec">
             <h2 class="sec-h">${STATUS_LABEL[k]}</h2>${ts.map(t => tripCard(t, uid)).join('')}</section>`).join('')}
-      ${doneN ? `<a class="card done-link" href="#/footprints"><span>已結束的旅程</span><span class="small muted row" style="gap:2px">${doneN} 趟${ic.chev}</span></a>` : ''}
+      ${doneN ? `<a class="card done-link" href="#/footprints/trip"><span>已結束的旅程</span><span class="small muted row" style="gap:2px">${doneN} 趟${ic.chev}</span></a>` : ''}
       <p class="tiny faint" style="text-align:center;margin:0">小夥伴粗企玩 ${APP_VERSION}</p>
     </div>`;
     ctx.bindTop();
@@ -179,28 +196,56 @@ export function renderHome(ctx) {
   draw();
 }
 
-/* ───────── 我的足跡（集章冊）：全部郵票，依年份分開；點郵票進那趟旅程 ───────── */
-export function renderFootprints(ctx) {
+/* ───────── 我的足跡：上面四個數字可以切換明細（國家、地區、集章冊、旅伴） ───────── */
+const tripLine = t => `<a class="fp-trip" href="#/trip/${esc(t.id)}"><span class="ellip">${esc(t.name)}</span><span class="tiny faint num">${fmtRange(t.start, t.end)}</span></a>`;
+const tripLines = ts => `<div class="fp-trips">${[...ts].sort((a, b) => b.start.localeCompare(a.start)).map(tripLine).join('')}</div>`;
+export function renderFootprints(ctx, tab) {
   const { S } = ctx;
-  if (location.hash.replace(/^#\/?/, '') !== 'footprints') return;
+  if (!/^footprints(\/\w+)?$/.test(location.hash.replace(/^#\/?/, ''))) return;
+  tab = FP_TABS.some(([k]) => k === tab) ? tab : 'trip';
   const fp = footprints(S);
-  const years = [];
-  fp.forEach(t => { const y = t.start.slice(0, 4); let g = years.find(x => x[0] === y); if (!g) years.push(g = [y, []]); g[1].push(t); });
+  const d = fpData(S, fp);
+  let body;
+  if (!S.trips) body = '<div class="spinner" style="margin:24px auto" role="status" aria-label="載入中"></div>';
+  else if (!fp.length) body = '<section class="card empty"><p class="small muted" style="margin:0">還沒有足跡。出發旅行後，這裡會蓋上第一枚郵票！</p></section>';
+  else if (tab === 'trip') {
+    const years = [];
+    fp.forEach(t => { const y = t.start.slice(0, 4); let g = years.find(x => x[0] === y); if (!g) years.push(g = [y, []]); g[1].push(t); });
+    body = years.map(([y, ts]) => `<section class="sec">
+        <h2 class="sec-h"><span class="num">${esc(y)}</span>・${ts.length} 趟</h2>
+        <div class="stamp-book">${ts.map((t, i) => `<a class="stamp-cell" href="#/trip/${esc(t.id)}">
+            ${stampHTML(t, 76, ROT[i % ROT.length])}
+            <b class="small ellip">${esc(t.name)}</b>
+            <span class="tiny faint num">${fmtRange(t.start, t.end)}</span>
+            ${tripStatus(t) === 'now' ? `<span class="chip">${STATUS_LABEL.now}</span>` : ''}
+          </a>`).join('')}</div></section>`).join('');
+  } else if (tab === 'country') {
+    body = [...d.countries].sort((a, b) => b.trips.length - a.trips.length).map(c => `<section class="card fp-item">
+        <div class="row" style="justify-content:space-between"><b>${esc(c.name)}</b><span class="small muted">${c.trips.length} 趟</span></div>
+        ${c.regions.size ? `<div class="small muted brk">${[...c.regions].map(esc).join('、')}</div>` : ''}
+        ${tripLines(c.trips)}</section>`).join('');
+  } else if (tab === 'region') {
+    const byC = [];
+    [...d.regions].sort((a, b) => b.trips.length - a.trips.length).forEach(r => { let g = byC.find(x => x[0] === r.country); if (!g) byC.push(g = [r.country, []]); g[1].push(r); });
+    body = byC.map(([cn, rs]) => `<section class="sec"><h2 class="sec-h">${esc(cn)}・${rs.length} 個地區</h2>
+        ${rs.map(r => `<section class="card fp-item">
+          <div class="row" style="justify-content:space-between"><b class="brk">${esc(r.name)}${r.whole ? '<span class="tiny faint">（沒有填城市）</span>' : ''}</b><span class="small muted" style="flex-shrink:0">${r.trips.length} 趟</span></div>
+          ${tripLines(r.trips)}</section>`).join('')}</section>`).join('');
+  } else {
+    body = d.people.length ? d.people.map(x => `<section class="card fp-item">
+        <div class="row">${avatarHTML(x.m)}<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">
+          <b>${esc(x.m.nickname)}</b><span class="tiny faint">${x.m.coreId ? '小夥伴' : '旅伴'}・一起去了 ${x.trips.length} 趟</span></div></div>
+        ${tripLines(x.trips)}</section>`).join('')
+      : '<section class="card empty"><p class="small muted" style="margin:0">目前都是獨旅，還沒有跟別人一起出去過。</p></section>';
+  }
   $('#main').innerHTML = `<div class="wrap">${ctx.topBar(`<a class="iconbtn" href="#/" aria-label="回首頁" style="margin-left:-10px">${ic.back}</a>`)}
     <h1 class="title" style="font-size:25px">我的足跡</h1>
-    <section class="card">${fpStats(S, fp)}</section>
-    ${!S.trips ? '<div class="spinner" style="margin:24px auto" role="status" aria-label="載入中"></div>'
-      : !fp.length ? '<section class="card empty"><p class="small muted" style="margin:0">還沒有足跡。出發旅行後，這裡會蓋上第一枚郵票！</p></section>'
-      : years.map(([y, ts]) => `<section class="sec">
-          <h2 class="sec-h"><span class="num">${esc(y)}</span>・${ts.length} 趟</h2>
-          <div class="stamp-book">${ts.map((t, i) => `<a class="stamp-cell" href="#/trip/${esc(t.id)}">
-              ${stampHTML(t, 76, ROT[i % ROT.length])}
-              <b class="small ellip">${esc(t.name)}</b>
-              <span class="tiny faint num">${fmtRange(t.start, t.end)}</span>
-              ${tripStatus(t) === 'now' ? `<span class="chip">${STATUS_LABEL.now}</span>` : ''}
-            </a>`).join('')}</div></section>`).join('')}
+    <section class="card">${fpStats(d, fp, tab)}</section>
+    ${body}
   </div>`;
   ctx.bindTop();
+  // 切換明細不要一直疊上一頁
+  $$('.fp-stats a').forEach(a => a.addEventListener('click', e => { e.preventDefault(); location.replace(a.getAttribute('href')); }));
 }
 
 /* ───────── 開新旅程／編輯旅程 ───────── */
@@ -324,6 +369,7 @@ export function renderTrip(ctx, id) {
     const ms = Object.entries(t.members || {}).sort(([, a], [, b]) => (a.role === 'owner' ? -1 : b.role === 'owner' ? 1 : (a.joinedAt || 0) - (b.joinedAt || 0)));
     const now = (() => { try { return new Intl.DateTimeFormat('zh-TW', { timeZone: t.tz, hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date()); } catch { return ''; } })();
     const active = (invites || []).filter(v => !v.disabled && v.expiresAt?.toMillis?.() > Date.now());
+    const cur = active[0]; // 每趟只用一組（最新的那組）
     const base = location.origin + location.pathname;
     $('#main').innerHTML = `<div class="wrap">${ctx.topBar(member ? homeBtn : `<a class="iconbtn" href="#/" aria-label="回首頁" style="margin-left:-10px">${ic.back}</a>`)}
       <div class="trip-top">
@@ -351,17 +397,18 @@ export function renderTrip(ctx, id) {
       </section>
       ${owner ? `<section class="card">
         <div class="row" style="justify-content:space-between"><h2 class="title" style="font-size:17px">邀請旅伴</h2></div>
-        ${invites === null ? '<div class="spinner" style="margin:8px auto"></div>' : active.length ? active.map(v => `<div class="invite">
+        ${invites === null ? '<div class="spinner" style="margin:8px auto"></div>' : cur ? `<div class="invite">
             <div class="row" style="justify-content:space-between;align-items:flex-end">
-              <div><div class="tiny faint">邀請碼</div><div class="num code">${esc(v.id)}</div></div>
-              <div class="tiny faint" style="text-align:right">${esc(fmtDate(v.expiresAt))} 前有效</div>
+              <div><div class="tiny faint">邀請碼</div><div class="num code">${esc(cur.id)}</div></div>
+              <div class="tiny faint" style="text-align:right">${esc(fmtDate(cur.expiresAt))} 前有效</div>
             </div>
             <div class="grid2">
-              <button class="btn" data-share="${esc(v.id)}">${ic.copy}${navigator.share ? '分享連結' : '複製連結'}</button>
-              <button class="btn" data-off="${esc(v.id)}">停用</button>
-            </div></div>`).join('') : '<p class="small muted" style="margin:0">產生邀請連結，傳給小夥伴或旅伴。對方點開、用 Google 登入就能加入。</p>'}
-        <button class="btn ${active.length ? '' : 'pri'} full" id="newInvite">${ic.plus}${active.length ? '再產生一組' : '產生邀請連結'}</button>
-        <p class="tiny faint" style="margin:0">連結 ${INVITE_DAYS} 天後失效；不想再讓人加入，按「停用」就好。</p>
+              <button class="btn" data-share="${esc(cur.id)}">${ic.copy}${navigator.share ? '分享連結' : '複製連結'}</button>
+              <button class="btn" id="offInvite">停用</button>
+            </div></div>
+          <button type="button" class="invite-more" id="newInvite">換一組新的邀請碼</button>` : `<p class="small muted" style="margin:0">產生邀請連結，傳給小夥伴或旅伴。對方點開、用 Google 登入就能加入。</p>
+          <button class="btn pri full" id="newInvite">${ic.plus}產生邀請連結</button>`}
+        <p class="tiny faint" style="margin:0">每趟旅程只有一組邀請碼，大家都用同一個連結加入，${INVITE_DAYS} 天後失效。不想再讓人加入就按「停用」；連結不小心傳錯人，就換一組新的，舊的會馬上失效。</p>
       </section>` : ''}
       ${owner ? `<a class="btn full" href="#/trip/${esc(id)}/edit">${ic.edit}編輯旅程</a>` : ''}
       ${member ? `<button type="button" class="btn full danger" id="leaveTrip">${ic.out}退出這趟旅程</button>` : ''}
@@ -369,15 +416,18 @@ export function renderTrip(ctx, id) {
     </div>${member ? tabBar(id, 'info') : ''}`;
     if (member) $('.wrap').classList.add('has-tabs');
     ctx.bindTop(); bindTabs();
-    $('#newInvite')?.addEventListener('click', () => createInvite(ctx, t));
+    $('#newInvite')?.addEventListener('click', () => {
+      if (cur && !confirm('換一組新的邀請碼？舊的連結會馬上失效，還沒加入的人要用新的連結。')) return;
+      createInvite(ctx, t, !!cur);
+    });
     $('#leaveTrip')?.addEventListener('click', () => leaveSheet(ctx, t, active));
     $$('[data-kick]').forEach(b => b.addEventListener('click', () => kickSheet(ctx, t, b.dataset.kick, active)));
     $$('[data-share]').forEach(b => b.addEventListener('click', () => shareInvite(t, b.dataset.share, base)));
-    $$('[data-off]').forEach(b => b.addEventListener('click', async () => {
+    $('#offInvite')?.addEventListener('click', async () => {
       if (!confirm('停用後，這組邀請碼就不能再用來加入。確定嗎？')) return;
-      try { await updateDoc(doc(S.db, 'invites', b.dataset.off), { disabled: true }); toast('已停用'); }
+      try { await disableMyInvites(ctx, id); toast('已停用'); }
       catch (e) { toast('停用失敗：' + (e?.code || e?.message)); }
-    }));
+    });
   };
   draw();
   const t0 = (S.trips || []).find(x => x.id === id);
@@ -395,16 +445,18 @@ function newCode() {
   const r = crypto.getRandomValues(new Uint8Array(6));
   return [...r].map(x => A[x % A.length]).join('');
 }
-async function createInvite(ctx, t) {
+// 每趟旅程只留一組：產生新的之前，先把自己之前產生的停用
+async function createInvite(ctx, t, replacing = false) {
   const { S } = ctx;
   const code = newCode();
   try {
+    await disableMyInvites(ctx, t.id);
     await setDoc(doc(S.db, 'invites', code), {
       tripId: t.id, tripName: t.name, places: t.places, start: t.start, end: t.end, tz: t.tz,
       ownerName: S.profile.nickname, createdBy: S.user.uid, disabled: false,
       createdAt: serverTimestamp(), expiresAt: Timestamp.fromMillis(Date.now() + INVITE_DAYS * 86400000)
     });
-    toast('邀請連結產生好了');
+    toast(replacing ? '換好了，舊的連結已經失效' : '邀請連結產生好了');
   } catch (e) { toast('產生失敗：' + (e?.code || e?.message)); }
 }
 async function shareInvite(t, code, base) {
@@ -526,7 +578,7 @@ function kickSheet(ctx, t, k, activeInvites) {
     <div class="row">${avatarHTML(m)}<div class="small muted" style="flex:1">${esc(m.nickname)}・${m.coreId ? '小夥伴' : '旅伴'}</div></div>
     <p class="warn" style="margin:0">移出後，${esc(m.nickname)}就看不到「${esc(t.name)}」的行程、交通住宿、清單和記帳了。</p>
     <p class="small muted" style="margin:0">他記過的帳、新增的項目會留在旅程裡；記帳裡會顯示「（已離開）」。</p>
-    ${n ? `<label class="row small" style="gap:8px;align-items:flex-start"><input type="checkbox" id="kkInv" checked style="margin-top:3px"> 同時停用目前有效的 ${n} 組邀請連結（不然他可以用連結再加入）</label>` : ''}
+    ${n ? `<label class="row small" style="gap:8px;align-items:flex-start"><input type="checkbox" id="kkInv" checked style="margin-top:3px"> 同時停用目前的邀請連結（不然他可以用連結再加入）</label>` : ''}
     <div class="sheet-acts"><button class="btn" data-close>先不要</button><button class="btn pri danger-pri" id="kkGo">移出</button></div>`, s => {
     quietInputs(s);
     $('#kkGo', s).addEventListener('click', async () => {

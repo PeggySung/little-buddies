@@ -130,7 +130,7 @@ function render(keep = false) {
   if (route === 'me/edit') return renderEdit(ctx);
   if (route === 'me/color' && !S.profile.coreId) return renderQuizRedo(ctx);
   if (route === 'new' && S.profile.coreId) return renderTripForm(ctx, null);
-  if (route === 'footprints') return renderFootprints(ctx);
+  if ((m = route.match(/^footprints(?:\/(\w+))?$/))) return renderFootprints(ctx, m[1]);
   if ((m = route.match(/^trip\/([\w-]+)\/edit$/))) return renderTripForm(ctx, m[1]);
   if ((m = route.match(/^trip\/([\w-]+)$/))) return renderTrip(ctx, m[1]);
   if ((m = route.match(/^trip\/([\w-]+)\/plan$/))) return renderTripPlan(ctx, m[1]);
@@ -145,7 +145,7 @@ function render(keep = false) {
 // 旅程資料有變動時，只重畫「看資料」的頁面（表單頁不重畫，以免打到一半的字不見）
 function onTrips() {
   const route = location.hash.replace(/^#\/?/, '');
-  if (route === '' || route === 'footprints' || /^trip\/[\w-]+$/.test(route) || (/^trip\/[\w-]+\/(plan|book|list|money)$/.test(route) && !isBusy() && !document.querySelector('#sheet'))) render(true);
+  if (route === '' || /^footprints(\/\w+)?$/.test(route) || /^trip\/[\w-]+$/.test(route) || (/^trip\/[\w-]+\/(plan|book|list|money)$/.test(route) && !isBusy() && !document.querySelector('#sheet'))) render(true);
 }
 function afterOnboard() {
   ensureTrips(ctx, onTrips);
