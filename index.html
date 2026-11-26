@@ -473,6 +473,17 @@ textarea.input { min-height: 84px; padding: 10px 14px; line-height: 1.6; resize:
 .bk-price { display: inline-flex; align-items: center; gap: 4px; }
 .bk-notes p { margin: 0; font-size: 13.5px; line-height: 1.6; color: var(--ink2); }
 .type-btn { min-height: 84px; flex-direction: column; gap: 8px; font-size: 15px; }
+/* 新增交通住宿的四個選項：電腦滑過會浮起、邊框和圖示變暖黃；手機點下去會縮一下 */
+.type-btn { transition: transform .18s ease, border-color .18s, background-color .18s, box-shadow .18s; }
+.type-btn .kind { transition: transform .22s cubic-bezier(.3,1.6,.5,1), background-color .18s, color .18s; }
+.type-btn:active { transform: scale(.97); background: var(--sunk); }
+.type-btn:focus-visible { outline: 2.5px solid var(--acc); outline-offset: 2px; }
+@media (hover: hover) and (pointer: fine) {
+  .type-btn:hover { transform: translateY(-2px); border-color: var(--acc); background: var(--card); box-shadow: var(--shadow); }
+  .type-btn:hover .kind { background: var(--acc-soft); color: var(--sel-ink); transform: scale(1.12); }
+  .type-btn:active { transform: translateY(0) scale(.97); }
+}
+@media (prefers-reduced-motion: reduce) { .type-btn, .type-btn .kind { transition: none; } .type-btn:hover, .type-btn:active, .type-btn:hover .kind { transform: none; } }
 .mem-pick { display: flex; gap: 8px; flex-wrap: wrap; }
 .mem { min-height: 44px; display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px 4px 6px; border-radius: 999px; border: 2px solid var(--line); background: var(--card); color: var(--ink2); cursor: pointer; font-family: inherit; font-weight: 700; font-size: 13.5px; }
 .mem[aria-pressed="true"] { border-color: var(--acc); background: var(--acc-soft); color: var(--sel-ink); }
