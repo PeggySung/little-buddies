@@ -473,6 +473,14 @@ function stopAnim() {
   if (fallC) { fallC.destroy(); fallC = null; } fallKey = '';
   const el = $('#wxbg'); if (el) el.className = '';
 }
+// 測試用：網址加上 ?wxtest=rain2 這類參數，背景就固定播那種天氣（不影響行程上顯示的天氣預報）
+// 可以用：sunny、pcloud、cloudy、mist、rain1（小雨）、rain2（雨）、rain3（大雨）、storm（雷雨）、snow；加 &wxph=night 可以看晚上的樣子
+const WX_TEST = (() => {
+  const q = new URLSearchParams(location.search), v = (q.get('wxtest') || '').toLowerCase(), ph = (q.get('wxph') || '').toLowerCase();
+  const map = { sunny: { k: 'sunny' }, pcloud: { k: 'pcloud' }, cloudy: { k: 'cloudy' }, mist: { k: 'mist' }, rain1: { k: 'rain', rain: 1 }, rain2: { k: 'rain', rain: 2 },
+    rain3: { k: 'rain', rain: 3 }, rain: { k: 'rain', rain: 2 }, storm: { k: 'storm', rain: 3 }, snow: { k: 'snow' } };
+  return map[v] ? { w: { n: v, ...map[v] }, ph: ['dawn', 'day', 'dusk', 'night'].includes(ph) ? ph : null } : null;
+})();
 // 背景用哪個天氣：以「現在」為主；但前後一小時內有下雨、下雪或雷雨，就照那個播（雨勢斷斷續續時，背景才不會跟預報對不上）
 const wet = c => { const w = wmo(c); return w.k === 'storm' ? 9 : w.k === 'snow' ? 8 : w.rain || 0; };
 function bgCode(f, date) {
@@ -500,8 +508,9 @@ function applyBg() {
     let ph = 'day';
     if (sun) ph = now.min < sun.rise - 40 || now.min > sun.set + 40 ? 'night' : now.min < sun.rise + 40 ? 'dawn' : now.min > sun.set - 40 ? 'dusk' : 'day';
     else if (now.min < 360 || now.min >= 1140) ph = 'night';
+    if (WX_TEST?.ph) ph = WX_TEST.ph;
     const code = bgCode(d?.f, now.date);
-    const w = code != null ? wmo(code) : { k: 'sunny' };
+    const w = WX_TEST?.w || (code != null ? wmo(code) : { k: 'sunny' });
     const anim = bgMode() === 'anim' && !reduceMotion();
     const dark = document.documentElement.dataset.theme === 'dark';
     const key = [ph, w.k, w.rain || 0, anim, dark].join('|');
