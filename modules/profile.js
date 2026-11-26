@@ -252,14 +252,14 @@ function renderQuiz(ctx, st, onDone, onBackOut) {
   });
 }
 
-function renderResult(ctx, st, onSave, saveLabel = '就用這個顏色') {
+function renderResult(ctx, st, onSave, saveLabel = '就用這個顏色', onCancel = null) {
   const { S } = ctx;
   const r = quizColor(st.answers, st.tweak);
   const res = { color: r.color, colorDark: r.colorDark, colorName: r.name, colorDesc: r.desc, quiz: { answers: st.answers, tweak: r.step * 0.02 } };
   const prof = { ...previewProfile(S, st.f || S.profile || {}), ...(S.profile || {}), ...(st.f || {}), ...res, coreId: null };
   const steps = r.step; // 這個顏色實際用到第幾格（拉超過可用範圍時會停在最邊邊）
   $('#main').innerHTML = `<div class="wrap">
-    <header class="top"><button class="iconbtn" id="rBack" aria-label="回到上一題" style="margin-left:-10px">${ic.back}</button><span></span></header>
+    <header class="top"><span></span><span></span></header>
     <div style="display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center">
       ${avatarHTML(prof, 'xl')}
       <div class="small faint">你的代表色是</div>
@@ -281,9 +281,10 @@ function renderResult(ctx, st, onSave, saveLabel = '就用這個顏色') {
     <p class="warn hidden" id="err" role="alert"></p>
     <button class="btn pri full" id="save">${esc(saveLabel)}</button>
     <button class="btn full" id="redo">重新測驗</button>
+    ${onCancel ? '<button class="btn full" id="rCancel">先不換，維持原本的顏色</button>' : ''}
   </div>`;
   $('#tw')?.addEventListener('change', e => { st.tweak = +e.target.value * 0.02; renderResult(ctx, st, onSave, saveLabel); });
-  $('#rBack').addEventListener('click', () => { st.qi = QUIZ.length - 1; st.step = 'quiz'; renderAgain(); });
+  $('#rCancel')?.addEventListener('click', onCancel);
   $('#redo').addEventListener('click', () => { st.qi = 0; st.answers = []; st.tweak = 0; st.step = 'quiz'; renderAgain(); });
   function renderAgain() { st.onAgain ? st.onAgain() : renderOnboarding(ctx); }
   $('#save').addEventListener('click', async () => {
@@ -303,7 +304,7 @@ export function renderQuizRedo(ctx) {
   renderResult(ctx, redo, async res => {
     await saveProfile(ctx, res, false);
     redo = null; location.hash = '#/me'; toast('代表色更新好了');
-  }, '換成這個顏色');
+  }, '換成這個顏色', () => { redo = null; location.hash = '#/me'; });
 }
 
 /* ───────── 個人檔案頁 ───────── */
