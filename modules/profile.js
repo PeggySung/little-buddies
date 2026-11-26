@@ -1,5 +1,5 @@
 // 個人檔案：第一次登入的設定、代表色測驗、個人檔案頁、編輯
-import { doc, setDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import { doc, getDoc, setDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { $, $$, esc, ic, toast, isDark } from './ui.js';
 import { BG_MODES, bgMode, setBgMode } from './weather.js';
 import { CORE, coreById, QUIZ, FAMILIES, quizColor, soft, isAllowedGuestColor } from './color.js';
@@ -114,10 +114,41 @@ async function saveProfile(ctx, data, isNew) {
 
 /* ───────── 第一次登入 ───────── */
 let ob = null;
+// 旅伴第一次登入：先確認邀請碼還能用，不要等到做完測驗、存檔時才失敗
+const inviteCheck = {}; // 邀請碼 → '' 代表可以用，否則是要顯示的原因
+async function checkInvite(S, code) {
+  try {
+    const snap = await getDoc(doc(S.db, 'invites', code));
+    if (!snap.exists()) return '找不到這組邀請碼，請跟邀請你的小夥伴確認連結是否正確。';
+    const inv = snap.data();
+    if (inv.disabled) return '這組邀請碼已經停用了，請跟邀請你的小夥伴要新的邀請連結。';
+    if ((inv.expiresAt?.toMillis?.() || 0) < Date.now()) return '這組邀請碼已經過期了，請跟邀請你的小夥伴要新的邀請連結。';
+    return '';
+  } catch (e) {
+    console.warn('檢查邀請碼失敗', e); // 讀不到（例如網路不穩）就先讓他繼續，存檔時安全規則還會再檢查一次
+    return '';
+  }
+}
 export function renderOnboarding(ctx) {
   const { S } = ctx;
+  const code = ctx.inviteCode?.();
+  if (!S.coreId && code && !(code in inviteCheck)) {
+    $('#main').innerHTML = '<div class="gate"><div class="spinner" role="status" aria-label="確認邀請中"></div></div>';
+    checkInvite(S, code).then(msg => { inviteCheck[code] = msg; if (S.user && !S.profile) renderOnboarding(ctx); });
+    return;
+  }
+  if (!S.coreId && code && inviteCheck[code]) {
+    $('#main').innerHTML = `<div class="wrap">${ctx.topBar(ctx.brand)}
+      <section class="card"><b>這個邀請連結不能用了</b>
+        <p class="small muted" style="margin:0">${esc(inviteCheck[code])}拿到新的連結後，直接點開就可以繼續。</p>
+        <p class="tiny faint" style="margin:0">目前登入：${esc(S.user.email || '')}</p>
+        <button class="btn full" id="logout">${ic.out}登出，換一個帳號</button></section></div>`;
+    ctx.bindTop();
+    $('#logout').addEventListener('click', () => ctx.signOut());
+    return;
+  }
   // 沒有邀請碼的陌生帳號：不能建立個人檔案
-  if (!S.coreId && !ctx.inviteCode?.()) {
+  if (!S.coreId && !code) {
     $('#main').innerHTML = `<div class="wrap">${ctx.topBar(ctx.brand)}
       <section class="card"><b>需要小夥伴的邀請</b>
         <p class="small muted" style="margin:0">小夥伴粗企玩只開放受邀的旅伴使用。請點小夥伴傳給你的邀請連結，再用這個 Google 帳號登入。</p>
@@ -224,9 +255,9 @@ function renderQuiz(ctx, st, onDone, onBackOut) {
 function renderResult(ctx, st, onSave, saveLabel = '就用這個顏色') {
   const { S } = ctx;
   const r = quizColor(st.answers, st.tweak);
-  const res = { color: r.color, colorDark: r.colorDark, colorName: r.name, colorDesc: r.desc, quiz: { answers: st.answers, tweak: st.tweak } };
+  const res = { color: r.color, colorDark: r.colorDark, colorName: r.name, colorDesc: r.desc, quiz: { answers: st.answers, tweak: r.step * 0.02 } };
   const prof = { ...previewProfile(S, st.f || S.profile || {}), ...(S.profile || {}), ...(st.f || {}), ...res, coreId: null };
-  const steps = Math.round(st.tweak / 0.02);
+  const steps = r.step; // 這個顏色實際用到第幾格（拉超過可用範圍時會停在最邊邊）
   $('#main').innerHTML = `<div class="wrap">
     <header class="top"><button class="iconbtn" id="rBack" aria-label="回到上一題" style="margin-left:-10px">${ic.back}</button><span></span></header>
     <div style="display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center">
@@ -240,16 +271,18 @@ function renderResult(ctx, st, onSave, saveLabel = '就用這個顏色') {
         <div class="field"><div class="swatch" style="background:${r.color}"></div><span class="tiny faint">淺色模式 <span class="num">${r.color}</span></span></div>
         <div class="field"><div class="swatch" style="background:${r.colorDark}"></div><span class="tiny faint">夜間模式 <span class="num">${r.colorDark}</span></span></div>
       </div>
-      <label class="field"><span>想亮一點或暗一點？</span>
-        <input type="range" id="tw" min="-3" max="3" step="1" value="${steps}" aria-valuetext="${steps === 0 ? '原本的明暗' : steps > 0 ? '亮 ' + steps + ' 階' : '暗 ' + -steps + ' 階'}">
+      ${r.stepMin < r.stepMax ? `<label class="field"><span>想亮一點或暗一點？</span>
+        <input type="range" id="tw" min="${r.stepMin}" max="${r.stepMax}" step="1" value="${steps}" aria-valuetext="${steps === 0 ? '原本的明暗' : steps > 0 ? '亮 ' + steps + ' 階' : '暗 ' + -steps + ' 階'}">
       </label>
+      ${r.stepMin === 0 || r.stepMax === 0 ? `<p class="tiny faint" style="margin:0">${r.stepMax === 0 ? '這個顏色已經是最亮了，只能往暗調。' : '這個顏色已經是最暗了，只能往亮調。'}</p>` : ''}`
+        : '<p class="tiny faint" style="margin:0">這個顏色前後的明暗都太像小夥伴，所以不能再調亮或調暗。</p>'}
       ${r.adjusted ? '<p class="tiny faint" style="margin:0">為了和小夥伴們的顏色分得開，已經自動微調過。</p>' : ''}
     </section>
     <p class="warn hidden" id="err" role="alert"></p>
     <button class="btn pri full" id="save">${esc(saveLabel)}</button>
     <button class="btn full" id="redo">重新測驗</button>
   </div>`;
-  $('#tw').addEventListener('change', e => { st.tweak = +e.target.value * 0.02; renderResult(ctx, st, onSave, saveLabel); });
+  $('#tw')?.addEventListener('change', e => { st.tweak = +e.target.value * 0.02; renderResult(ctx, st, onSave, saveLabel); });
   $('#rBack').addEventListener('click', () => { st.qi = QUIZ.length - 1; st.step = 'quiz'; renderAgain(); });
   $('#redo').addEventListener('click', () => { st.qi = 0; st.answers = []; st.tweak = 0; st.step = 'quiz'; renderAgain(); });
   function renderAgain() { st.onAgain ? st.onAgain() : renderOnboarding(ctx); }

@@ -61,8 +61,8 @@ export const MIN_DE_PEER = 0.08; // 同一趟旅伴之間至少 0.08（旅程功
 
 /* ───────── 旅伴色系 ───────── */
 export const FAMILIES = {
-  orange:   { name: '焦糖橘',   L: 0.56, C: 0.15, h: 50,  Lmax: 0.60 }, // 比阿蓁深很多，才分得開
-  yellow:   { name: '向日葵黃', L: 0.80, C: 0.16, h: 98,  Lmin: 0.74, Lmax: 0.82 }, // 黃色要夠亮才不會變土黃
+  orange:   { name: '焦糖橘',   L: 0.52, C: 0.15, h: 50,  Lmin: 0.42, Lmax: 0.60 }, // 比阿蓁深很多，才分得開
+  yellow:   { name: '向日葵黃', L: 0.78, C: 0.16, h: 98,  Lmin: 0.70, Lmax: 0.84 }, // 黃色要夠亮才不會變土黃
   matcha:   { name: '抹茶綠',   L: 0.62, C: 0.16, h: 128 },
   mint:     { name: '薄荷綠',   L: 0.78, C: 0.11, h: 172, Lmax: 0.82 },
   lake:     { name: '湖水青',   L: 0.62, C: 0.12, h: 205 },
@@ -84,7 +84,7 @@ export const QUIZ = [
     { t: '躲進老街小店，點一杯濃濃的抹茶', v: 'matcha', icon: 'cup' },
     { t: '清晨走進森林步道，空氣涼涼的', v: 'mint', icon: 'leaf' },
     { t: '浮潛時看見透明到見底的海水', v: 'lake', icon: 'wave' },
-    { t: '躺在草地上，看一整片沒有雲的藍天', v: 'sky', icon: 'cloud' },
+    { t: '躺在草地上，看藍天飄過幾朵白雲', v: 'sky', icon: 'cloud' },
     { t: '在紫色的薰衣草花田裡慢慢散步', v: 'lavender', icon: 'sprig' },
     { t: '夏夜的河邊，看煙火一朵一朵炸開', v: 'berry', icon: 'firework' },
     { t: '春天在櫻花樹下野餐', v: 'sakura', icon: 'blossom' },
@@ -114,23 +114,65 @@ export const QUIZ = [
 ];
 
 const L_RANGE = [0.50, 0.76]; // 淺色主題用的明亮度範圍（太亮在米白底上看不清楚）
+const LADDER_RANGE = [0.44, 0.86]; // 滑桿拉到底時最暗／最亮可以到哪裡
+const TWEAK_STEP = 0.02, TWEAK_STEPS = 3; // 結果頁滑桿：一格 0.02，往亮、往暗各 3 格
 
-// 依答案算出顏色（answers：每題選的 index；tweak：結果頁滑桿的明暗微調）
+// 依答案算出顏色（answers：每題選的 index；tweak：結果頁滑桿的明暗微調，-0.06～0.06，一格 0.02）
 export function quizColor(answers, tweak = 0) {
   const fam = FAMILIES[QUIZ[0].options[answers[0]].v];
   const o = i => QUIZ[i].options[answers[i]] || {};
   const cScale = fam.neutral ? 0.4 : 1;
-  const L = Math.max(fam.Lmin || 0, fam.L + (o(3).dL || 0) + (o(4).dL || 0)) + tweak;
+  const lo = fam.Lmin ?? L_RANGE[0], hi = fam.Lmax ?? L_RANGE[1];
+  const L = fam.L + (o(3).dL || 0) + (o(4).dL || 0);
   const C = fam.C + ((o(2).dC || 0) + (o(4).dC || 0)) * cScale;
   const h = fam.h + (o(1).dh || 0) * (fam.neutral ? 0.5 : 1);
-  const res = finalizeColor(L, C, h, !!fam.neutral, fam.Lmax);
+  const base = finalizeColor(L, C, h, !!fam.neutral, hi, lo); // 先決定色相、彩度（必要時避開小夥伴）
+  const lad = tweakLadder(base.L, base.C, base.h, lo, hi);
+  // 滑桿可以拉的範圍：stepMin（最暗幾格，負數）～ stepMax（最亮幾格）
+  const stepMin = lad ? -lad.down.length : 0, stepMax = lad ? lad.up.length : 0;
+  const step = clamp(Math.round(tweak / TWEAK_STEP), stepMin, stepMax);
+  const pick = !lad ? null : step > 0 ? lad.up[step - 1] : step < 0 ? lad.down[-step - 1] : lad.mid;
+  const res = pick ? { ...base, ...pick, ok: true } : { ...base, colorDark: darkVariant(base.L, base.C, base.h) };
+  res.step = step; res.stepMin = stepMin; res.stepMax = stepMax;
   const name = `${o(3).prefix || ''}${fam.name}`;
   return { ...res, family: QUIZ[0].options[answers[0]].v, name, desc: `${o(1).desc || ''}。` };
 }
 
+// 滑桿的每一格：沿著明暗往亮、往暗各找最多 3 格，淺色和深色模式都要和小夥伴分得開，
+// 而且和上一格明顯不一樣（明暗至少差 0.02、色差至少 MIN_DE_STEP）；找不到就不給那一格，滑桿會變短
+const MIN_DE_STEP = 0.015;
+function tweakLadder(L, C, h, lo, hi) {
+  const sLo = Math.min(lo, LADDER_RANGE[0]), sHi = Math.max(hi, LADDER_RANGE[1]);
+  const at = l => {
+    const color = oklchToHex(l, C, h), colorDark = oklchToHex(clamp(l + 0.12, 0.52, 0.95), C, h);
+    return minCoreDelta(color) >= MIN_DE_CORE && minCoreDarkDelta(colorDark) >= MIN_DE_CORE ? { L: l, color, colorDark } : null;
+  };
+  const cands = [];
+  for (let l = sLo; l <= sHi + 1e-9; l += 0.005) cands.push(at(+l.toFixed(3)));
+  // 中間那格：在色系平常的範圍內，離答案最近的可用顏色
+  const good = cands.filter(Boolean);
+  if (!good.length) return null;
+  const inRange = good.filter(c => c.L >= lo - 1e-9 && c.L <= hi + 1e-9);
+  const mid = (inRange.length ? inRange : good).reduce((a, b) => (Math.abs(b.L - L) < Math.abs(a.L - L) ? b : a));
+  const differs = (a, b) => Math.abs(a.L - b.L) >= TWEAK_STEP - 1e-9
+    && deltaE(a.color, b.color) >= MIN_DE_STEP && deltaE(a.colorDark, b.colorDark) >= MIN_DE_STEP;
+  const walk = dir => {
+    const out = []; let prev = mid;
+    const list = dir > 0 ? cands.filter(c => c && c.L > mid.L) : cands.filter(c => c && c.L < mid.L).reverse();
+    for (const c of list) {
+      if (out.length >= TWEAK_STEPS) break;
+      if (Math.abs(c.L - prev.L) > 0.05) break; // 中間隔著一段不能用的顏色，就不要跳過去
+      if (differs(c, prev)) { out.push(c); prev = c; }
+    }
+    return out;
+  };
+  const up = walk(1), down = walk(-1);
+  return { mid, up, down };
+}
+
 // 套用撞色規則：和核心色的色差夠大、明亮度在可讀範圍
-export function finalizeColor(L, C, h, neutral = false, Lmax = L_RANGE[1]) {
-  L = clamp(L, L_RANGE[0], Lmax);
+export function finalizeColor(L, C, h, neutral = false, Lmax = L_RANGE[1], Lmin = L_RANGE[0]) {
+  L = clamp(L, Lmin, Lmax);
   C = clamp(C, neutral ? 0.02 : 0.06, 0.2);
   h = ((h % 360) + 360) % 360;
   let hex = oklchToHex(L, C, h), adjusted = false;
@@ -138,7 +180,7 @@ export function finalizeColor(L, C, h, neutral = false, Lmax = L_RANGE[1]) {
     // 還太像某個核心色：往遠離那個核心色的明亮度方向推
     const near = CORE.reduce((a, c) => (deltaE(hex, c.color) < deltaE(hex, a.color) ? c : a));
     const nl = hexToOklch(near.color).L;
-    L = clamp(L + (L >= nl ? 0.03 : -0.03), L_RANGE[0], Lmax);
+    L = clamp(L + (L >= nl ? 0.03 : -0.03), Lmin, Lmax);
     hex = oklchToHex(L, C, h); adjusted = true;
   }
   for (let k = 0; k < 12 && minCoreDelta(hex) < MIN_DE_CORE; k++) {
@@ -158,13 +200,13 @@ const minCoreDarkDelta = hex => Math.min(...CORE.map(c => deltaE(hex, c.colorDar
 
 // 深色模式的顏色：預設比淺色亮 0.12；太像小夥伴的深色版時，找最接近預設、但分得出來的明暗／彩度
 function darkVariant(L, C, h) {
-  const L0 = clamp(L + 0.12, 0.70, 0.86);
+  const L0 = clamp(L + 0.12, 0.62, 0.95);
   const first = oklchToHex(L0, C, h);
   if (minCoreDarkDelta(first) >= MIN_DE_CORE) return first;
   let best = first, bestCost = Infinity, bestD = minCoreDarkDelta(first);
   for (let dL = -0.20; dL <= 0.201; dL += 0.01) {
     const l = L0 + dL;
-    if (l < 0.62 || l > 0.92) continue;
+    if (l < 0.58 || l > 0.96) continue;
     for (const k of [1, 0.85, 0.7, 0.55]) {
       const hex = oklchToHex(l, C * k, h), d = minCoreDarkDelta(hex);
       const cost = Math.abs(dL) + (1 - k) * 0.15;
