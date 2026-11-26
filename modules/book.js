@@ -36,6 +36,18 @@ function flightMinutes(b) {
   return a != null && z != null && z > a ? Math.round((z - a) / 60000) : null;
 }
 const hm = m => `${Math.floor(m / 60) ? Math.floor(m / 60) + ' 小時 ' : ''}${m % 60 ? (m % 60) + ' 分' : ''}`.trim();
+// 火車巴士的車程：用出發、抵達時間算（抵達比出發早就當作隔天到；有填抵達日期就照日期算）
+function transitMinutes(b) {
+  const t = v => (/^\d{1,2}:\d{2}$/.test(v || '') ? +v.split(':')[0] * 60 + +v.split(':')[1] : null);
+  const a = t(b.depTime), z = t(b.arrTime);
+  if (a == null || z == null) return null;
+  const days = b.arrDate && b.depDate ? Math.max(0, Math.round((Date.parse(b.arrDate) - Date.parse(b.depDate)) / 86400000)) : z < a ? 1 : 0;
+  const m = z + days * 1440 - a;
+  return m > 0 && m < 3 * 1440 ? m : null;
+}
+// 路線中段：一串小圓點加一個小箭頭，下面是時間
+const CHEV = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
+const routeMid = mins => `<div class="mid"><div class="trk" aria-hidden="true"><span class="dots"></span><span class="chev">${CHEV}</span></div>${mins ? `<span class="tiny faint">${esc(hm(mins))}</span>` : ''}</div>`;
 function nights(a, b) { if (!a || !b) return null; const n = Math.round((Date.parse(b) - Date.parse(a)) / 86400000); return n > 0 ? n : null; }
 
 // 排序用的開始時間
@@ -156,7 +168,7 @@ function cardInner(t, b) {
       ${bkHead(b, esc([b.airline, b.no].filter(Boolean).join(' ') || '航班'), `${esc(md(b.depDate))}${b.seats ? `・座位 ${esc(b.seats)}` : ''}`)}
       <div class="route">
         <div class="end"><div class="code num">${esc(b.from || '—')}</div><div class="tiny muted">${esc(b.fromName || '')}${b.depTerm ? `・${esc(b.depTerm)}` : ''}</div><div class="tm num">${esc(b.depTime || '')}</div></div>
-        <div class="mid"><span class="line"></span><span class="tiny faint">${mins ? esc(hm(mins)) : ''}</span></div>
+        ${routeMid(mins)}
         <div class="end" style="text-align:right"><div class="code num">${esc(b.to || '—')}</div><div class="tiny muted">${esc(b.toName || '')}${b.arrTerm ? `・${esc(b.arrTerm)}` : ''}</div><div class="tm num">${esc(b.arrTime || '')}${nextDay}</div></div>
       </div>
       <p class="bk-tz">時間皆為當地時間</p>
@@ -167,7 +179,7 @@ function cardInner(t, b) {
       ${bkHead(b, esc(b.no || (b.mode === 'bus' ? '巴士' : '火車')), `${esc(md(b.depDate))}${b.seats ? `・座位 ${esc(b.seats)}` : ''}`)}
       <div class="route">
         <div class="end"><div class="code sm">${esc(b.from || '—')}</div><div class="tm num">${esc(b.depTime || '')}</div></div>
-        <div class="mid"><span class="line"></span></div>
+        ${routeMid(transitMinutes(b))}
         <div class="end" style="text-align:right"><div class="code sm">${esc(b.to || '—')}</div><div class="tm num">${esc(b.arrTime || '')}</div></div>
       </div>
       ${commonBottom(t, b)}</article>`;
