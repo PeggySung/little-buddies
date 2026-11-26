@@ -56,33 +56,39 @@ export const CORE = [
   { id: 'zhen', name: '阿蓁', color: '#ED8712', colorDark: '#FEB06F', driver: false, avatar: 'img/avatars/zhen.webp' }
 ];
 export const coreById = id => CORE.find(c => c.id === id);
-const CORE_HUES = CORE.map(c => hexToOklch(c.color).h);
-const MIN_HUE_GAP = 30;   // 和核心色相至少差 30°
-const MIN_DE_CORE = 0.12; // 和核心色的色差至少 0.12
+const MIN_DE_CORE = 0.10; // 和核心色的色差至少 0.10（肉眼分得出來就好，色相可以靠近）
 export const MIN_DE_PEER = 0.08; // 同一趟旅伴之間至少 0.08（旅程功能用）
 
 /* ───────── 旅伴色系 ───────── */
 export const FAMILIES = {
-  berry:   { name: '莓果紫紅', L: 0.60, C: 0.21, h: 336, Lmin: 0.55 },
-  yellow:  { name: '向日葵黃', L: 0.78, C: 0.17, h: 98,  Lmin: 0.74, Lmax: 0.80 }, // 黃色要夠亮才不會變土黃
-  matcha:  { name: '抹茶綠',   L: 0.66, C: 0.18, h: 124 },
-  lake:    { name: '湖水青',   L: 0.66, C: 0.13, h: 196 },
-  sakura:  { name: '櫻花粉',   L: 0.70, C: 0.16, h: 356 },
-  sky:     { name: '晴空藍',   L: 0.66, C: 0.14, h: 226 }
+  orange:   { name: '焦糖橘',   L: 0.56, C: 0.15, h: 50,  Lmax: 0.60 }, // 比阿蓁深很多，才分得開
+  yellow:   { name: '向日葵黃', L: 0.80, C: 0.16, h: 98,  Lmin: 0.74, Lmax: 0.82 }, // 黃色要夠亮才不會變土黃
+  matcha:   { name: '抹茶綠',   L: 0.62, C: 0.16, h: 128 },
+  mint:     { name: '薄荷綠',   L: 0.78, C: 0.11, h: 172, Lmax: 0.82 },
+  lake:     { name: '湖水青',   L: 0.62, C: 0.12, h: 205 },
+  sky:      { name: '晴空藍',   L: 0.74, C: 0.12, h: 236, Lmax: 0.80 },
+  lavender: { name: '薰衣草紫', L: 0.74, C: 0.11, h: 305, Lmax: 0.80 },
+  berry:    { name: '莓果紫紅', L: 0.58, C: 0.20, h: 338 },
+  sakura:   { name: '櫻花粉',   L: 0.74, C: 0.13, h: 358 },
+  earth:    { name: '大地棕',   L: 0.55, C: 0.05, h: 60, neutral: true }
 };
-// 小夥伴的顏色把色環佔掉很多，旅伴能用的色相只剩三段：黃～黃綠（90–132°）、青～天藍（192–230°）、洋紅～粉（323–359°）
-// 每段放兩個色系，第 2 題的色相微調（±12°）也不會跑到別的色系去
+// 色系繞色環一圈；可以靠近小夥伴的色相，只要色差夠大、肉眼分得出來（MIN_DE_CORE）
+// 同一趟旅程真的太像時，會自動只在那趟微調明暗；還是不滿意可以到「我的」重做測驗
 
 /* ───────── 測驗題目 ───────── */
 // 第 1 題決定色系；第 2～5 題各調一個方向：色相（色溫）、彩度、明亮度、深淺對比
 export const QUIZ = [
   { q: '旅途中最讓你心動的瞬間是？', key: 'family', options: [
-    { t: '夏夜的河邊，看煙火一朵一朵炸開', v: 'berry', icon: 'firework' },
+    { t: '在巷子裡的甜點店，挖一口剛烤好的焦糖布丁', v: 'orange', icon: 'pudding' },
     { t: '夏天正午，走進一整片向日葵花田', v: 'yellow', icon: 'flower' },
     { t: '躲進老街小店，點一杯濃濃的抹茶', v: 'matcha', icon: 'cup' },
-    { t: '清晨浮潛，看見透明到見底的海水', v: 'lake', icon: 'wave' },
+    { t: '清晨走進森林步道，空氣涼涼的', v: 'mint', icon: 'leaf' },
+    { t: '浮潛時看見透明到見底的海水', v: 'lake', icon: 'wave' },
+    { t: '躺在草地上，看一整片沒有雲的藍天', v: 'sky', icon: 'cloud' },
+    { t: '在紫色的薰衣草花田裡慢慢散步', v: 'lavender', icon: 'sprig' },
+    { t: '夏夜的河邊，看煙火一朵一朵炸開', v: 'berry', icon: 'firework' },
     { t: '春天在櫻花樹下野餐', v: 'sakura', icon: 'blossom' },
-    { t: '躺在草地上，看一整片沒有雲的藍天', v: 'sky', icon: 'cloud' }
+    { t: '推開木頭門，走進有咖啡香的老咖啡館', v: 'earth', icon: 'door' }
   ] },
   { q: '到一個新城市，你第一件事會做什麼？', key: 'first', options: [
     { t: '先找在地小吃攤', dh: 12, desc: '走到哪都要先找在地小吃的人' },
@@ -122,21 +128,11 @@ export function quizColor(answers, tweak = 0) {
   return { ...res, family: QUIZ[0].options[answers[0]].v, name, desc: `${o(1).desc || ''}。` };
 }
 
-// 套用撞色規則：色相避開核心色、色差夠大、明亮度在可讀範圍
+// 套用撞色規則：和核心色的色差夠大、明亮度在可讀範圍
 export function finalizeColor(L, C, h, neutral = false, Lmax = L_RANGE[1]) {
   L = clamp(L, L_RANGE[0], Lmax);
   C = clamp(C, neutral ? 0.02 : 0.06, 0.2);
   h = ((h % 360) + 360) % 360;
-  if (!neutral) {
-    for (let k = 0; k < 3; k++) {
-      CORE_HUES.forEach(ch => {
-        if (hueDist(h, ch) < MIN_HUE_GAP) {
-          const diff = ((h - ch + 540) % 360) - 180; // h 在核心色的哪一側
-          h = (ch + (diff >= 0 ? MIN_HUE_GAP : -MIN_HUE_GAP) + 360) % 360;
-        }
-      });
-    }
-  }
   let hex = oklchToHex(L, C, h), adjusted = false;
   for (let k = 0; k < 8 && minCoreDelta(hex) < MIN_DE_CORE; k++) {
     // 還太像某個核心色：往遠離那個核心色的明亮度方向推
@@ -154,10 +150,31 @@ export function finalizeColor(L, C, h, neutral = false, Lmax = L_RANGE[1]) {
     C = Math.max(neutral ? 0.02 : 0.06, C - 0.01);
     hex = oklchToHex(L, C, h); adjusted = true;
   }
-  const dark = oklchToHex(clamp(L + 0.12, 0.70, 0.86), C, h);
+  const dark = darkVariant(L, C, h);
   return { color: hex, colorDark: dark, L, C, h, ok: minCoreDelta(hex) >= MIN_DE_CORE, adjusted };
 }
 export const minCoreDelta = hex => Math.min(...CORE.map(c => deltaE(hex, c.color)));
+const minCoreDarkDelta = hex => Math.min(...CORE.map(c => deltaE(hex, c.colorDark)));
+
+// 深色模式的顏色：預設比淺色亮 0.12；太像小夥伴的深色版時，找最接近預設、但分得出來的明暗／彩度
+function darkVariant(L, C, h) {
+  const L0 = clamp(L + 0.12, 0.70, 0.86);
+  const first = oklchToHex(L0, C, h);
+  if (minCoreDarkDelta(first) >= MIN_DE_CORE) return first;
+  let best = first, bestCost = Infinity, bestD = minCoreDarkDelta(first);
+  for (let dL = -0.20; dL <= 0.201; dL += 0.01) {
+    const l = L0 + dL;
+    if (l < 0.62 || l > 0.92) continue;
+    for (const k of [1, 0.85, 0.7, 0.55]) {
+      const hex = oklchToHex(l, C * k, h), d = minCoreDarkDelta(hex);
+      const cost = Math.abs(dL) + (1 - k) * 0.15;
+      if (d >= MIN_DE_CORE ? cost < bestCost : bestCost === Infinity && d > bestD) {
+        best = hex; if (d >= MIN_DE_CORE) bestCost = cost; else bestD = d;
+      }
+    }
+  }
+  return best;
+}
 
 // 存檔前檢查：旅伴的顏色不能用核心色
 export function isAllowedGuestColor(hex) {

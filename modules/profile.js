@@ -209,7 +209,7 @@ function renderQuiz(ctx, st, onDone, onBackOut) {
     </div>
     <div style="margin-top:auto;display:flex;flex-direction:column;gap:10px">
       <button class="btn pri full" id="qNext" ${sel == null ? 'disabled' : ''}>${st.qi === QUIZ.length - 1 ? '看結果' : '下一題'}</button>
-      <p class="tiny faint" style="text-align:center;margin:0">你的代表色會避開小夥伴們的顏色</p>
+      <p class="tiny faint" style="text-align:center;margin:0">你的代表色會和小夥伴們的顏色分得開</p>
     </div>
   </div>`;
   $$('.opt').forEach(b => b.addEventListener('click', () => { st.answers[st.qi] = +b.dataset.i; renderQuiz(ctx, st, onDone, onBackOut); }));
