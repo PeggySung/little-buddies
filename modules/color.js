@@ -63,24 +63,26 @@ export const MIN_DE_PEER = 0.08; // 同一趟旅伴之間至少 0.08（旅程功
 
 /* ───────── 旅伴色系 ───────── */
 export const FAMILIES = {
-  orange: { name: '夕陽橘',   L: 0.70, C: 0.15, h: 52 },
-  yellow: { name: '向日葵黃', L: 0.72, C: 0.14, h: 85 },
-  matcha: { name: '抹茶綠',   L: 0.66, C: 0.14, h: 125 },
-  lake:   { name: '湖水青',   L: 0.64, C: 0.11, h: 205 },
-  sakura: { name: '櫻花粉',   L: 0.68, C: 0.14, h: 355 },
-  earth:  { name: '大地棕',   L: 0.55, C: 0.05, h: 60, neutral: true }
+  berry:   { name: '莓果紫紅', L: 0.60, C: 0.21, h: 336, Lmin: 0.55 },
+  yellow:  { name: '向日葵黃', L: 0.78, C: 0.17, h: 98,  Lmin: 0.74, Lmax: 0.80 }, // 黃色要夠亮才不會變土黃
+  matcha:  { name: '抹茶綠',   L: 0.66, C: 0.18, h: 124 },
+  lake:    { name: '湖水青',   L: 0.66, C: 0.13, h: 196 },
+  sakura:  { name: '櫻花粉',   L: 0.70, C: 0.16, h: 356 },
+  sky:     { name: '晴空藍',   L: 0.66, C: 0.14, h: 226 }
 };
+// 小夥伴的顏色把色環佔掉很多，旅伴能用的色相只剩三段：黃～黃綠（90–132°）、青～天藍（192–230°）、洋紅～粉（323–359°）
+// 每段放兩個色系，第 2 題的色相微調（±12°）也不會跑到別的色系去
 
 /* ───────── 測驗題目 ───────── */
 // 第 1 題決定色系；第 2～5 題各調一個方向：色相（色溫）、彩度、明亮度、深淺對比
 export const QUIZ = [
   { q: '旅途中最讓你心動的瞬間是？', key: 'family', options: [
-    { t: '坐在海邊，看夕陽把整片天空染掉', v: 'orange', icon: 'sunset' },
+    { t: '夏夜的河邊，看煙火一朵一朵炸開', v: 'berry', icon: 'firework' },
     { t: '夏天正午，走進一整片向日葵花田', v: 'yellow', icon: 'flower' },
     { t: '躲進老街小店，點一杯濃濃的抹茶', v: 'matcha', icon: 'cup' },
     { t: '清晨浮潛，看見透明到見底的海水', v: 'lake', icon: 'wave' },
     { t: '春天在櫻花樹下野餐', v: 'sakura', icon: 'blossom' },
-    { t: '推開木頭門，走進有咖啡香的老咖啡館', v: 'earth', icon: 'door' }
+    { t: '躺在草地上，看一整片沒有雲的藍天', v: 'sky', icon: 'cloud' }
   ] },
   { q: '到一個新城市，你第一件事會做什麼？', key: 'first', options: [
     { t: '先找在地小吃攤', dh: 12, desc: '走到哪都要先找在地小吃的人' },
@@ -112,17 +114,17 @@ export function quizColor(answers, tweak = 0) {
   const fam = FAMILIES[QUIZ[0].options[answers[0]].v];
   const o = i => QUIZ[i].options[answers[i]] || {};
   const cScale = fam.neutral ? 0.4 : 1;
-  const L = fam.L + (o(3).dL || 0) + (o(4).dL || 0) + tweak;
+  const L = Math.max(fam.Lmin || 0, fam.L + (o(3).dL || 0) + (o(4).dL || 0)) + tweak;
   const C = fam.C + ((o(2).dC || 0) + (o(4).dC || 0)) * cScale;
   const h = fam.h + (o(1).dh || 0) * (fam.neutral ? 0.5 : 1);
-  const res = finalizeColor(L, C, h, !!fam.neutral);
+  const res = finalizeColor(L, C, h, !!fam.neutral, fam.Lmax);
   const name = `${o(3).prefix || ''}${fam.name}`;
   return { ...res, family: QUIZ[0].options[answers[0]].v, name, desc: `${o(1).desc || ''}。` };
 }
 
 // 套用撞色規則：色相避開核心色、色差夠大、明亮度在可讀範圍
-export function finalizeColor(L, C, h, neutral = false) {
-  L = clamp(L, L_RANGE[0], L_RANGE[1]);
+export function finalizeColor(L, C, h, neutral = false, Lmax = L_RANGE[1]) {
+  L = clamp(L, L_RANGE[0], Lmax);
   C = clamp(C, neutral ? 0.02 : 0.06, 0.2);
   h = ((h % 360) + 360) % 360;
   if (!neutral) {
@@ -140,7 +142,7 @@ export function finalizeColor(L, C, h, neutral = false) {
     // 還太像某個核心色：往遠離那個核心色的明亮度方向推
     const near = CORE.reduce((a, c) => (deltaE(hex, c.color) < deltaE(hex, a.color) ? c : a));
     const nl = hexToOklch(near.color).L;
-    L = clamp(L + (L >= nl ? 0.03 : -0.03), L_RANGE[0], L_RANGE[1]);
+    L = clamp(L + (L >= nl ? 0.03 : -0.03), L_RANGE[0], Lmax);
     hex = oklchToHex(L, C, h); adjusted = true;
   }
   for (let k = 0; k < 12 && minCoreDelta(hex) < MIN_DE_CORE; k++) {
