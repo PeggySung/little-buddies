@@ -168,16 +168,16 @@ export function guessDayPlace(t, items) {
 /* ───────── 天氣預報（16 天）和潮汐（約 9 天） ───────── */
 const ll = g => `latitude=${g.lat.toFixed(3)}&longitude=${g.lon.toFixed(3)}`;
 async function forecast(g) {
-  const ck = `wxf2:${g.lat.toFixed(2)},${g.lon.toFixed(2)}`; // wxf2：加了體感、降雨、風、紫外線
+  const ck = `wxf3:${g.lat.toFixed(2)},${g.lon.toFixed(2)}`; // wxf2：加了體感、降雨、風、紫外線；wxf3：加了前後一小時的逐時天氣
   const fresh = cacheGet(ck, 30 * 60000); if (fresh) return fresh;
   try {
-    const j = await getJSON(`https://api.open-meteo.com/v1/forecast?${ll(g)}&current=weather_code,temperature_2m&daily=weather_code,temperature_2m_max,temperature_2m_min,apparent_temperature_max,apparent_temperature_min,precipitation_probability_max,precipitation_sum,wind_speed_10m_max,wind_gusts_10m_max,uv_index_max,sunrise,sunset&timezone=auto&forecast_days=16`);
+    const j = await getJSON(`https://api.open-meteo.com/v1/forecast?${ll(g)}&current=weather_code,temperature_2m&daily=weather_code,temperature_2m_max,temperature_2m_min,apparent_temperature_max,apparent_temperature_min,precipitation_probability_max,precipitation_sum,wind_speed_10m_max,wind_gusts_10m_max,uv_index_max,sunrise,sunset&hourly=weather_code&past_hours=1&forecast_hours=2&timezone=auto&forecast_days=16`);
     const days = {};
     const dl = j.daily || {}, at = (k, i) => (dl[k] ? dl[k][i] : null);
     (dl.time || []).forEach((d, i) => { days[d] = { code: dl.weather_code[i], max: dl.temperature_2m_max[i], min: dl.temperature_2m_min[i],
       fmax: at('apparent_temperature_max', i), fmin: at('apparent_temperature_min', i), pop: at('precipitation_probability_max', i), rain: at('precipitation_sum', i),
       wind: at('wind_speed_10m_max', i), gust: at('wind_gusts_10m_max', i), uv: at('uv_index_max', i), rise: isoMin(j.daily.sunrise[i]), set: isoMin(j.daily.sunset[i]) }; });
-    const v = { tz: j.timezone, cur: j.current ? { code: j.current.weather_code, temp: j.current.temperature_2m } : null, days };
+    const v = { tz: j.timezone, cur: j.current ? { code: j.current.weather_code, temp: j.current.temperature_2m } : null, near: (j.hourly?.weather_code || []).filter(c => c != null), days };
     cacheSet(ck, v); return v;
   } catch { return cacheGet(ck, 3 * 86400000) || null; } // 沒網路時，三天內的舊資料也先拿來用
 }
@@ -473,6 +473,15 @@ function stopAnim() {
   if (fallC) { fallC.destroy(); fallC = null; } fallKey = '';
   const el = $('#wxbg'); if (el) el.className = '';
 }
+// 背景用哪個天氣：以「現在」為主；但前後一小時內有下雨、下雪或雷雨，就照那個播（雨勢斷斷續續時，背景才不會跟預報對不上）
+const wet = c => { const w = wmo(c); return w.k === 'storm' ? 9 : w.k === 'snow' ? 8 : w.rain || 0; };
+function bgCode(f, date) {
+  if (!f) return null;
+  const now = f.cur?.code ?? f.days?.[date]?.code;
+  const near = [now, ...(f.near || [])].filter(c => c != null);
+  if (!near.length) return null;
+  return near.reduce((a, c) => (wet(c) > wet(a) ? c : a), near[0]);
+}
 // 旅行中的今天在哪個地區（行程頁算好告訴這裡），背景天氣跟著用
 const todayPlace = new Map();
 export function setTodayPlace(t, pi) {
@@ -491,7 +500,7 @@ function applyBg() {
     let ph = 'day';
     if (sun) ph = now.min < sun.rise - 40 || now.min > sun.set + 40 ? 'night' : now.min < sun.rise + 40 ? 'dawn' : now.min > sun.set - 40 ? 'dusk' : 'day';
     else if (now.min < 360 || now.min >= 1140) ph = 'night';
-    const code = d?.f?.cur?.code ?? d?.f?.days?.[now.date]?.code;
+    const code = bgCode(d?.f, now.date);
     const w = code != null ? wmo(code) : { k: 'sunny' };
     const anim = bgMode() === 'anim' && !reduceMotion();
     const dark = document.documentElement.dataset.theme === 'dark';
