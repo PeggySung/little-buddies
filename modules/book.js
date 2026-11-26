@@ -119,17 +119,28 @@ function membersRow(t, b) {
 function commonBottom(t, b) {
   const notes = (b.note || '').split('\n').map(l => l.trim()).filter(Boolean);
   const link = safeUrl(b.link);
-  return `${notes.length ? `<div class="bk-notes">${notes.map(n => `<p>${esc(n)}</p>`).join('')}</div>` : ''}
-    <div class="dash"></div>
-    <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:8px">
-      <div class="row" style="gap:8px;flex-wrap:wrap">
-        ${b.confirm ? `<button class="btn sm" data-copy="${esc(b.confirm)}" aria-label="複製訂位代號 ${esc(b.confirm)}">${ic.copy}<span class="num">${esc(b.confirm)}</span></button>` : ''}
+  const meta = `${b.confirm ? `<button class="btn sm" data-copy="${esc(b.confirm)}" aria-label="複製訂位代號 ${esc(b.confirm)}">${ic.copy}<span class="num">${esc(b.confirm)}</span></button>` : ''}
         ${link ? `<a class="btn sm" href="${esc(link)}" target="_blank" rel="noopener">${ic.ticket}訂單</a>` : ''}
-        ${b.price ? `<span class="small muted">${ic.coin}${esc(b.price)}</span>` : ''}
-      </div>
-      <div class="row" style="gap:6px">${membersRow(t, b)}<button class="iconbtn" data-bedit="${esc(b.id)}" aria-label="編輯">${ic.edit}</button></div>
-    </div>`;
+        ${b.price ? `<span class="small muted bk-price">${ic.coin}${esc(b.price)}</span>` : ''}`.trim();
+  const mem = membersRow(t, b);
+  // 底部一排：旅伴頭像靠左，訂位代號、訂單、金額靠右（編輯按鈕在卡片右上角）
+  return `${notes.length ? `<div class="bk-notes">${notes.map(n => `<p>${esc(n)}</p>`).join('')}</div>` : ''}
+    ${mem || meta ? `<div class="bk-foot">${mem}${meta ? `<div class="bk-meta">${meta}</div>` : ''}</div>` : ''}`;
 }
+// 卡片標題列：類型圖示＋名稱＋小字，右上角是編輯按鈕
+function bkHead(b, title, sub) {
+  return `<div class="bk-head">${typeIcon(b)}<div class="bk-title"><b>${title}</b>${sub ? `<div class="tiny faint">${sub}</div>` : ''}</div>
+    <button class="iconbtn bk-edit" data-bedit="${esc(b.id)}" aria-label="編輯">${ic.edit}</button></div>`;
+}
+// 入住／退房、取車／還車：上面一行小字（入住・日期），下面大字是時間；兩格中間一個小箭頭
+const ARROW = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg>';
+function ioBox(label, date, time, place) {
+  return `<div class="bk-pt">
+      <span class="bk-dl"><span>${label}</span>${time ? `<span class="num">${esc(md(date))}</span>` : ''}</span>
+      ${time ? `<b class="bk-tm num">${esc(time)}</b>` : `<b class="bk-dt num">${esc(md(date))}</b>`}
+      ${place ? `<span class="tiny muted">${esc(place)}</span>` : ''}</div>`;
+}
+const ioRow = (a, z) => `<div class="bk-io">${a}<span class="bk-arr">${ARROW}</span>${z}</div>`;
 function outOfTrip(t, b) {
   return ['depDate', 'arrDate', 'inDate', 'outDate', 'pickDate', 'retDate'].some(k => b[k] && (b[k] < t.start || b[k] > t.end));
 }
@@ -142,20 +153,18 @@ function cardInner(t, b) {
     const mins = flightMinutes(b);
     const nextDay = b.arrDate && b.depDate && b.arrDate > b.depDate ? `<sup>+${nights(b.depDate, b.arrDate)}</sup>` : '';
     return `<article class="card bk pass" id="bk-${esc(b.id)}">
-      <div class="row" style="justify-content:space-between">
-        <div class="row" style="gap:10px">${typeIcon(b)}<div><b>${esc([b.airline, b.no].filter(Boolean).join(' ') || '航班')}</b><div class="tiny faint">${esc(md(b.depDate))}${b.seats ? `・座位 ${esc(b.seats)}` : ''}</div></div></div>
-      </div>
+      ${bkHead(b, esc([b.airline, b.no].filter(Boolean).join(' ') || '航班'), `${esc(md(b.depDate))}${b.seats ? `・座位 ${esc(b.seats)}` : ''}`)}
       <div class="route">
         <div class="end"><div class="code num">${esc(b.from || '—')}</div><div class="tiny muted">${esc(b.fromName || '')}${b.depTerm ? `・${esc(b.depTerm)}` : ''}</div><div class="tm num">${esc(b.depTime || '')}</div></div>
         <div class="mid"><span class="line"></span><span class="tiny faint">${mins ? esc(hm(mins)) : ''}</span></div>
         <div class="end" style="text-align:right"><div class="code num">${esc(b.to || '—')}</div><div class="tiny muted">${esc(b.toName || '')}${b.arrTerm ? `・${esc(b.arrTerm)}` : ''}</div><div class="tm num">${esc(b.arrTime || '')}${nextDay}</div></div>
       </div>
-      <p class="tiny faint" style="margin:0">時間都是當地時間</p>
+      <p class="bk-tz">時間皆為當地時間</p>
       ${commonBottom(t, b)}</article>`;
   }
   if (b.type === 'transit') {
     return `<article class="card bk" id="bk-${esc(b.id)}">
-      <div class="row" style="gap:10px">${typeIcon(b)}<div style="flex:1;min-width:0"><b>${esc(b.no || (b.mode === 'bus' ? '巴士' : '火車'))}</b><div class="tiny faint">${esc(md(b.depDate))}${b.seats ? `・座位 ${esc(b.seats)}` : ''}</div></div></div>
+      ${bkHead(b, esc(b.no || (b.mode === 'bus' ? '巴士' : '火車')), `${esc(md(b.depDate))}${b.seats ? `・座位 ${esc(b.seats)}` : ''}`)}
       <div class="route">
         <div class="end"><div class="code sm">${esc(b.from || '—')}</div><div class="tm num">${esc(b.depTime || '')}</div></div>
         <div class="mid"><span class="line"></span></div>
@@ -166,21 +175,15 @@ function cardInner(t, b) {
   if (b.type === 'stay') {
     const n = nights(b.inDate, b.outDate);
     return `<article class="card bk" id="bk-${esc(b.id)}">
-      <div class="row" style="gap:10px">${typeIcon(b)}<div style="flex:1;min-width:0"><b>${esc(b.name || '住宿')}</b>${n ? `<div class="tiny faint">${n} 晚</div>` : ''}</div></div>
-      <div class="grid2 bk-io">
-        <div><span class="tiny faint">入住</span><b class="num">${esc(md(b.inDate))}</b><span class="num small">${esc(b.inTime || '')}</span></div>
-        <div><span class="tiny faint">退房</span><b class="num">${esc(md(b.outDate))}</b><span class="num small">${esc(b.outTime || '')}</span></div>
-      </div>
+      ${bkHead(b, esc(b.name || '住宿'), n ? `${n} 晚` : '')}
+      ${ioRow(ioBox('入住', b.inDate, b.inTime), ioBox('退房', b.outDate, b.outTime))}
       ${b.address ? `<div class="small muted">${esc(b.address)}</div><div class="row" style="gap:8px"><a class="btn sm" href="${mapsSearch(b.address)}" target="_blank" rel="noopener">${ic.map}地圖</a><a class="btn sm pri" href="${mapsDir(b.address)}" target="_blank" rel="noopener">${ic.nav}導航</a>${b.phone ? `<a class="btn sm" href="tel:${esc(b.phone.replace(/[^\d+]/g, ''))}">${ic.phone}電話</a>` : ''}</div>` : b.phone ? `<a class="btn sm" href="tel:${esc(b.phone.replace(/[^\d+]/g, ''))}">${ic.phone}電話</a>` : ''}
       ${commonBottom(t, b)}</article>`;
   }
   // rental
   return `<article class="card bk" id="bk-${esc(b.id)}">
-    <div class="row" style="gap:10px">${typeIcon(b)}<div style="flex:1;min-width:0"><b>${esc(b.company || '租車')}</b>${b.car ? `<div class="tiny faint">${esc(b.car)}</div>` : ''}</div></div>
-    <div class="grid2 bk-io">
-      <div><span class="tiny faint">取車</span><b class="num">${esc(md(b.pickDate))}</b><span class="num small">${esc(b.pickTime || '')}</span><span class="tiny muted">${esc(b.pickPlace || '')}</span></div>
-      <div><span class="tiny faint">還車</span><b class="num">${esc(md(b.retDate))}</b><span class="num small">${esc(b.retTime || '')}</span><span class="tiny muted">${esc(b.retPlace || '')}</span></div>
-    </div>
+    ${bkHead(b, esc(b.company || '租車'), b.car ? esc(b.car) : '')}
+    ${ioRow(ioBox('取車', b.pickDate, b.pickTime, b.pickPlace), ioBox('還車', b.retDate, b.retTime, b.retPlace))}
     ${b.pickPlace || b.phone ? `<div class="row" style="gap:8px;flex-wrap:wrap">${b.pickPlace ? `<a class="btn sm pri" href="${mapsDir(b.pickPlace)}" target="_blank" rel="noopener">${ic.nav}導航到取車點</a>` : ''}${b.retPlace && b.retPlace !== b.pickPlace ? `<a class="btn sm" href="${mapsDir(b.retPlace)}" target="_blank" rel="noopener">${ic.nav}還車點</a>` : ''}${b.phone ? `<a class="btn sm" href="tel:${esc(b.phone.replace(/[^\d+]/g, ''))}">${ic.phone}電話</a>` : ''}</div>` : ''}
     ${commonBottom(t, b)}</article>`;
 }
