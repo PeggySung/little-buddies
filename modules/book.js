@@ -264,6 +264,8 @@ function editBooking(ctx, t, b, type) {
     $('#bSave', s).addEventListener('click', () => {
       const v = id => ($(id, s)?.value || '').trim();
       const up = id => v(id).toUpperCase();
+      // 必填的沒填：跳出提示、把畫面捲到那一格
+      const need = (id, msg) => { toast(msg); const el = $(id, s); el?.focus(); el?.scrollIntoView({ block: 'center', behavior: 'smooth' }); };
       let data = { type, confirm: v('#bConfirm'), link: v('#bLink'), price: v('#bPrice'), note: ($('#bNote', s).value || '').replace(/\r/g, '').trim(),
         members: ms.length > 1 ? [...sel] : ms, updatedBy: S.user.uid, updatedAt: serverTimestamp() };
       if (data.link && !safeUrl(data.link)) { toast('訂單連結要用 https:// 開頭'); return; }
@@ -274,19 +276,24 @@ function editBooking(ctx, t, b, type) {
         data = { ...data, airline: v('#bAirline'), no: up('#bNo'), from: up('#bFrom'), to: up('#bTo'), fromName: v('#bFromName'), toName: v('#bToName'),
           depDate: v('#bDepDate'), depTime: v('#bDepTime'), arrDate: v('#bArrDate'), arrTime: v('#bArrTime'), depTz: v('#bDepTz'), arrTz: v('#bArrTz'),
           depTerm: v('#bDepTerm'), arrTerm: v('#bArrTerm'), seats: v('#bSeats') };
-        if (!data.depDate) { toast('請填起飛日期'); return; }
+        if (!data.from && !data.fromName) return need('#bFrom', '請填出發機場代碼或出發城市');
+        if (!data.to && !data.toName) return need('#bTo', '請填抵達機場代碼或抵達城市');
+        if (!data.depDate) return need('#bDepDate', '請填起飛日期');
         if (data.arrDate && data.arrDate < data.depDate) { toast('抵達日期不能早於起飛日期'); return; }
       } else if (type === 'transit') {
         data = { ...data, mode, no: v('#bNo'), from: v('#bFrom'), to: v('#bTo'), depDate: v('#bDepDate'), depTime: v('#bDepTime'), arrDate: v('#bArrDate'), arrTime: v('#bArrTime'), seats: v('#bSeats') };
-        if (!data.depDate) { toast('請填出發日期'); return; }
+        if (!data.from) return need('#bFrom', '請填出發站');
+        if (!data.to) return need('#bTo', '請填抵達站');
+        if (!data.depDate) return need('#bDepDate', '請填出發日期');
       } else if (type === 'stay') {
         data = { ...data, name: v('#bName'), address: v('#bAddress'), inDate: v('#bInDate'), inTime: v('#bInTime'), outDate: v('#bOutDate'), outTime: v('#bOutTime'), phone: v('#bPhone') };
-        if (!data.name) { toast('請填住宿名稱'); return; }
+        if (!data.name) return need('#bName', '請填住宿名稱');
         if (!data.inDate || !data.outDate) { toast('請填入住和退房日期'); return; }
         if (data.outDate < data.inDate) { toast('退房日期不能早於入住日期'); return; }
       } else {
         data = { ...data, company: v('#bCompany'), car: v('#bCar'), pickPlace: v('#bPickPlace'), pickDate: v('#bPickDate'), pickTime: v('#bPickTime'),
           retPlace: v('#bRetPlace'), retDate: v('#bRetDate'), retTime: v('#bRetTime'), phone: v('#bPhone') };
+        if (!data.company && !data.pickPlace) return need('#bCompany', '請填租車公司或取車地點');
         if (!data.pickDate || !data.retDate) { toast('請填取車和還車日期'); return; }
         if (data.retDate < data.pickDate) { toast('還車日期不能早於取車日期'); return; }
       }

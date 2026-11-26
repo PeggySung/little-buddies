@@ -117,12 +117,24 @@ h1, h2, h3 { margin: 0; font-weight: 400; }
 .tm-row { display: flex; gap: 10px; align-items: center; }
 .tm-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .tm-main .bar { height: 6px; }
-.t24 { display: flex; align-items: center; gap: 2px; padding: 0 6px; }
-.t24 select { appearance: none; -webkit-appearance: none; border: 0; background: transparent; color: var(--ink); font: inherit; font-size: 17px; font-variant-numeric: tabular-nums; padding: 10px 6px; min-width: 0; flex: 1; text-align: center; text-align-last: center; border-radius: 8px; cursor: pointer; }
-.t24 select:focus-visible { outline: 2px solid var(--acc); }
-.t24 span { font-weight: 700; color: var(--ink3); }
-.t24.empty select { color: var(--ink3); }
-.t24:focus-within { border-color: var(--acc); }
+.t24 { display: flex; align-items: center; padding: 0; }
+.t24-btn { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--ink); font: inherit; font-size: 17px; font-variant-numeric: tabular-nums; padding: 10px 12px; text-align: center; border-radius: inherit; cursor: pointer; }
+.t24.empty .t24-btn { color: var(--ink3); }
+.t24-btn:focus-visible { outline: none; background: var(--acc-soft); }
+.t24-bg { z-index: 80; }
+.t24-dlg { max-width: 320px; gap: 12px; }
+.t24-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.t24-now { font-size: 24px; font-weight: 700; color: var(--ink); }
+.t24-cols { display: flex; align-items: center; gap: 8px; }
+.t24-cols > div { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
+.t24-colon { font-size: 22px; font-weight: 700; color: var(--ink3); padding-top: 18px; }
+.t24-col { width: 100%; height: 240px; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 4px; padding: 4px; border-radius: 14px; background: var(--card); border: 1.5px solid var(--line); scrollbar-width: none; }
+.t24-col::-webkit-scrollbar { display: none; }
+.t24-col button { flex-shrink: 0; height: 44px; border: 0; border-radius: 10px; background: transparent; color: var(--ink); font: inherit; font-size: 19px; font-variant-numeric: tabular-nums; cursor: pointer; }
+.t24-col button[aria-selected="true"] { background: var(--acc); color: var(--on-pri); font-weight: 700; }
+.t24-col button:focus-visible { outline: 2px solid var(--acc); outline-offset: -2px; }
+.t24-acts { display: flex; gap: 10px; }
+.t24-acts .btn { flex: 1; }
 .sec-h.fold { display: flex; align-items: center; justify-content: space-between; width: 100%; background: none; border: 0; padding: 6px 2px; text-align: left; cursor: pointer; font: inherit; font-size: 13px; font-weight: 700; color: var(--ink3); letter-spacing: 1px; }
 .sec-h.fold svg { transition: transform .2s; flex-shrink: 0; }
 .sec-h.fold[aria-expanded="false"] svg { transform: rotate(-90deg); }
@@ -515,7 +527,7 @@ html::-webkit-scrollbar-button { display: none; height: 0; }
 .btn:focus-visible, .opt:focus-visible, .seg button:focus-visible, .iconbtn:focus-visible { outline: 2.5px solid var(--acc); outline-offset: 2px; }
 /* 輸入框聚焦：直接把原本的框變成黃色加粗，不另外在外面畫一圈 */
 .input:focus, .t24:focus-within { outline: none; border-color: var(--acc); box-shadow: 0 0 0 1px var(--acc); }
-.t24 select:focus-visible { outline: none; background: var(--acc-soft); }
+
 .seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 8px; }
 .seg button { min-height: 46px; border-radius: var(--r-btn); border: 2px solid var(--line); background: var(--card); color: var(--ink2); font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 8px; }
 .seg button[aria-pressed="true"] { background: var(--acc-soft); border-color: var(--acc); color: var(--sel-ink); }

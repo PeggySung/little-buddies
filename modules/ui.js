@@ -98,40 +98,71 @@ export async function copyText(t) {
 }
 
 /* ───────── 24 小時制時間欄位 ─────────
-   <time-24 id="x" value="14:30">：兩個下拉選單（時 00–23、分 00–59），
-   手機上不會跑出上午／下午。用法和 <input type="time"> 一樣：.value、input／change 事件。 */
+   <time-24 id="x" value="14:30">：點了跳出 app 自己畫的時間選擇（左邊選時 00–23、右邊選分 00–59），
+   不用手機內建的下拉選單（Android 每次打開長得不一樣），也不會跑出上午／下午。
+   用法和 <input type="time"> 一樣：.value、input／change 事件。 */
 const pad2 = n => String(n).padStart(2, '0');
 class Time24 extends HTMLElement {
   connectedCallback() {
     if (this._ready) return; this._ready = true;
-    const label = this.getAttribute('aria-label') || '';
-    const opts = (n, ph) => `<option value="">${ph}</option>` + Array.from({ length: n }, (_, i) => `<option value="${pad2(i)}">${pad2(i)}</option>`).join('');
-    this.innerHTML = `<select data-h aria-label="${label}（時）">${opts(24, '時')}</select><span aria-hidden="true">:</span><select data-m aria-label="${label}（分）">${opts(60, '分')}</select>`;
-    this._h = this.querySelector('[data-h]'); this._m = this.querySelector('[data-m]');
+    this._label = this.getAttribute('aria-label') || '時間';
+    this._v = '';
+    this.innerHTML = '<button type="button" class="t24-btn"></button>';
+    this._btn = this.firstElementChild;
     this.value = this.getAttribute('value') || '';
-    const fire = () => { this.dispatchEvent(new Event('input', { bubbles: true })); this.dispatchEvent(new Event('change', { bubbles: true })); };
-    this._h.addEventListener('change', e => {
-      e.stopPropagation();
-      if (!this._h.value) this._m.value = ''; else if (!this._m.value) this._m.value = '00';
-      this._sync(); fire();
-    });
-    this._m.addEventListener('change', e => {
-      e.stopPropagation();
-      if (this._m.value && !this._h.value) this._h.value = '00';
-      if (!this._m.value && this._h.value) this._m.value = '00';
-      this._sync(); fire();
-    });
+    this._btn.addEventListener('click', () => this._open());
   }
-  _sync() { this.classList.toggle('empty', !this._h.value); }
-  get value() { return this._h && this._h.value ? `${this._h.value}:${this._m.value || '00'}` : (this._ready ? '' : this.getAttribute('value') || ''); }
+  _sync() {
+    this.classList.toggle('empty', !this._v);
+    this._btn.textContent = this._v || '--:--';
+    this._btn.setAttribute('aria-label', `${this._label}：${this._v || '未選'}，點一下選時間`);
+  }
+  get value() { return this._ready ? this._v : this.getAttribute('value') || ''; }
   set value(v) {
     const m = /^(\d{1,2}):(\d{2})/.exec(v || '');
-    if (!this._ready) { this.setAttribute('value', v || ''); return; }
-    this._h.value = m && +m[1] < 24 ? pad2(+m[1]) : '';
-    this._m.value = m && this._h.value ? pad2(Math.min(59, +m[2])) : '';
-    this._sync();
+    const s = m && +m[1] < 24 ? `${pad2(+m[1])}:${pad2(Math.min(59, +m[2]))}` : '';
+    if (!this._ready) { this.setAttribute('value', s); return; }
+    this._v = s; this._sync();
   }
-  focus() { this._h?.focus(); }
+  focus() { this._btn?.focus(); }
+  _open() {
+    let [h, m] = this._v ? this._v.split(':') : ['', ''];
+    const col = (key, n, cur, name) => `<div class="t24-col" role="listbox" aria-label="${name}" data-col="${key}">${Array.from({ length: n }, (_, i) => pad2(i))
+      .map(x => `<button type="button" role="option" data-v="${x}" aria-selected="${x === cur}">${x}</button>`).join('')}</div>`;
+    const bg = document.createElement('div');
+    bg.className = 'dlg-bg t24-bg';
+    bg.innerHTML = `<div class="dlg t24-dlg" role="dialog" aria-modal="true" aria-label="${esc(this._label)}">
+      <div class="t24-head"><b>${esc(this._label)}</b><span class="t24-now num"></span></div>
+      <div class="t24-cols"><div><span class="tiny faint">時</span>${col('h', 24, h, '時')}</div><span class="t24-colon" aria-hidden="true">:</span><div><span class="tiny faint">分</span>${col('m', 60, m, '分')}</div></div>
+      <div class="t24-acts"><button type="button" class="btn" data-act="clear">清除</button><button type="button" class="btn pri" data-act="ok">完成</button></div></div>`;
+    document.body.appendChild(bg);
+    const now = bg.querySelector('.t24-now');
+    const show = () => { now.textContent = h ? `${h}:${m || '00'}` : '--:--'; };
+    const pick = (key, v) => {
+      if (key === 'h') { h = v; if (!m) m = '00'; } else { m = v; if (!h) h = '00'; }
+      bg.querySelectorAll('[data-col] [data-v]').forEach(b => b.setAttribute('aria-selected', String(b.dataset.v === (b.parentNode.dataset.col === 'h' ? h : m))));
+      show();
+    };
+    // 打開時把選到的（沒選就用 09 點、00 分）捲到中間
+    const center = (key, v) => { const c = bg.querySelector(`[data-col="${key}"]`), b = c.querySelector(`[data-v="${v}"]`); if (b) c.scrollTop = b.offsetTop - c.offsetTop - (c.clientHeight - b.offsetHeight) / 2; };
+    center('h', h || '09'); center('m', m || '00'); show();
+    const close = () => { bg.remove(); this._btn.focus({ preventScroll: true }); };
+    const commit = v => {
+      close();
+      if (v === this._v) return;
+      this._v = v; this._sync();
+      this.dispatchEvent(new Event('input', { bubbles: true })); this.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    bg.addEventListener('click', e => {
+      const b = e.target.closest('button');
+      if (!b) { if (e.target === bg) close(); return; }
+      if (b.dataset.v) pick(b.parentNode.dataset.col, b.dataset.v);
+      else if (b.dataset.act === 'clear') commit('');
+      else if (b.dataset.act === 'ok') commit(h ? `${h}:${m || '00'}` : this._v);
+    });
+    bg.addEventListener('keydown', e => { if (e.key === 'Escape') { e.stopPropagation(); close(); } });
+    (bg.querySelector('[data-col="h"] [aria-selected="true"]') || bg.querySelector('[data-act="ok"]')).focus({ preventScroll: true });
+  }
 }
 if (!customElements.get('time-24')) customElements.define('time-24', Time24);
 

@@ -116,6 +116,55 @@ async function geo(pl) {
   return r;
 }
 
+/* ───────── 用行程地點的位置判斷這天在哪個地區 ─────────
+   行程名稱、地點裡沒有直接寫地區名字時（例如「礁溪溫泉公園」沒寫「宜蘭」），
+   查出行程地點的經緯度，看離旅程的哪個地區最近。查過的地點會記起來（一年）。
+   Nominatim 規定每秒最多查一次，所以排隊查。 */
+let geoLine = Promise.resolve();
+const geoSlot = fn => { const p = geoLine.then(fn); geoLine = p.catch(() => {}).then(() => new Promise(ok => setTimeout(ok, 1100))); return p; };
+async function geoText(q, ccs) {
+  const ck = 'wxgeoq:' + ccs.join(',') + '|' + q;
+  const hit = cacheGet(ck, 365 * 86400000); if (hit) return hit;
+  if (cacheGet(ck + ':miss', 86400000)) return null;
+  const r = await geoSlot(async () => {
+    try {
+      const a = await getJSON(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&accept-language=zh-TW${ccs.length ? '&countrycodes=' + ccs.join(',').toLowerCase() : ''}&q=${encodeURIComponent(q)}`);
+      return a[0] ? { lat: +a[0].lat, lon: +a[0].lon } : null;
+    } catch { return undefined; } // 網路錯誤：不記成找不到，下次再查
+  });
+  if (r) cacheSet(ck, r); else if (r === null) cacheSet(ck + ':miss', 1);
+  return r || null;
+}
+const kmBetween = (a, b) => {
+  const R = 6371, rad = x => (x * Math.PI) / 180, dLat = rad(b.lat - a.lat), dLon = rad(b.lon - a.lon);
+  return 2 * R * Math.asin(Math.sqrt(Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLon / 2) ** 2));
+};
+const guessMemo = new Map();
+const guessKey = (t, items) => t.id + '|' + items.map(x => (x.map || x.title || '').trim()).join('|');
+export const guessedPlace = (t, items) => guessMemo.get(guessKey(t, items));
+export function guessDayPlace(t, items) {
+  const key = guessKey(t, items);
+  if (guessMemo.has(key)) return Promise.resolve(guessMemo.get(key));
+  return (async () => {
+    const ps = (t.places || []).map((p, i) => ({ i, pl: (p.city || '').trim() ? placeOf(t, i) : null })).filter(x => x.pl);
+    if (ps.length < 2) return null;
+    const ccs = [...new Set(ps.map(x => x.pl.cc).filter(Boolean))];
+    const centers = (await Promise.all(ps.map(async x => ({ ...x, g: await geo(x.pl) })))).filter(x => x.g);
+    if (centers.length < 2) return null;
+    const qs = [...new Set(items.map(x => (x.map || x.title || '').trim()).filter(q => q && !/^https?:/i.test(q)))].slice(0, 5);
+    const votes = new Map();
+    for (const q of qs) {
+      const g = await geoText(q, ccs); if (!g) continue;
+      const near = centers.reduce((a, b) => (kmBetween(g, b.g) < kmBetween(g, a.g) ? b : a));
+      if (kmBetween(g, near.g) <= 150) votes.set(near.i, (votes.get(near.i) || 0) + 1);
+    }
+    let best = null;
+    votes.forEach((n, i) => { if (best == null || n > votes.get(best)) best = i; });
+    guessMemo.set(key, best);
+    return best;
+  })().catch(() => null);
+}
+
 /* ───────── 天氣預報（16 天）和潮汐（約 9 天） ───────── */
 const ll = g => `latitude=${g.lat.toFixed(3)}&longitude=${g.lon.toFixed(3)}`;
 async function forecast(g) {
@@ -230,6 +279,16 @@ const wxIcon = k => `<svg class="wxi" width="17" height="17" viewBox="0 0 24 24"
 const chevron = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 4.5l3 3 3-3"/></svg>';
 export function mountDayWx(t, dinfo) {
   const row = $('#wxRow'); if (!row || !dinfo) return;
+  row.dataset.date = dinfo.date;
+  // 行程裡沒寫地區名字：用行程地點的位置判斷（查過的直接用，沒查過的先顯示預設地區，查到再換）
+  if (dinfo.multi && !dinfo.auto && dinfo.items?.length) {
+    const known = guessedPlace(t, dinfo.items);
+    if (known != null) dinfo = { ...dinfo, pi: known, auto: true, byGeo: true };
+    else if (known === undefined) guessDayPlace(t, dinfo.items).then(pi => {
+      if (pi == null || !row.isConnected || row.dataset.date !== dinfo.date) return;
+      mountDayWx(t, { ...dinfo, pi, auto: true, byGeo: true });
+    });
+  }
   const m = tripWx(t, dinfo.pi);
   const draw = () => {
     if (!row.isConnected) return;
@@ -286,8 +345,8 @@ function helpSheet(t, dinfo, d, pl) {
   openSheet(`<div class="sheet-h"><h3 class="title">天氣資料說明</h3><button class="iconbtn" data-close aria-label="關閉">✕</button></div>
     <section class="wxhelp-sec">
       <h4>這天用的地點：${esc(pl.label)}</h4>
-      <p>${dinfo.auto ? '這天的行程或交通住宿裡有出現這個地區的名字，所以用它。' : dinfo.multi ? '這天的行程裡還看不出在哪個地區，先用旅程的第一個地區。' : '這趟旅程只有一個地區。'}</p>
-      ${dinfo.multi ? `<p class="tiny faint">怎麼判斷：旅程有好幾個地區（${places.map(esc).join('、')}）時，看這天的行程（名稱、地點、備註）和交通住宿（含當晚住的地方）裡，哪個地區的名字出現最多次就用哪個；一樣多時以當晚住的地方為準；都沒有出現就用第一個地區。</p>` : ''}
+      <p>${dinfo.auto ? (dinfo.byGeo ? '這天行程的地點，離這個地區最近，所以用它。' : '這天的行程或交通住宿裡有出現這個地區的名字，所以用它。') : dinfo.multi ? '這天的行程裡還看不出在哪個地區，先用旅程的第一個地區。' : '這趟旅程只有一個地區。'}</p>
+      ${dinfo.multi ? `<p class="tiny faint">怎麼判斷：旅程有好幾個地區（${places.map(esc).join('、')}）時，看這天的行程（名稱、地點、備註）和交通住宿（含當晚住的地方）裡，哪個地區的名字出現最多次就用哪個；一樣多時以當晚住的地方為準。都沒有出現時，查行程地點在地圖上的位置，看離哪個地區最近；還是看不出來就用第一個地區。</p>` : ''}
     </section>
     <section class="wxhelp-sec">
       <h4>${+date.slice(5, 7)}/${+date.slice(8)} 有哪些資料</h4>
@@ -376,6 +435,8 @@ function cardHTML(d, date, tripTz) {
 let bgTrip = null, bgTimer = null, bgKey = '';
 let libs = null, anims = null, decoAnim = null, decoKey = '', fallC = null, fallKey = '';
 // 雪花：取自 jochang 下雪動畫裡的同一顆雪花，全畫面下雪和右上角圖示風格一致
+// 雨滴：和右上角下雨動畫裡的雨滴一樣（淺藍色圓角長條、往左下斜 15°，雷雨斜 37°）
+const DROP = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 64" width="10" height="64"><rect x="1.5" y="1.5" width="7" height="61" rx="3.5" fill="#ADE8FF" stroke="#8CCBEA" stroke-width="1.2"/></svg>');
 const FLAKE = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="-1 -1 22 25" width="44" height="50"><path d="M18.98 8.60 C19.96 8.03 20.29 6.75 19.73 5.75 C19.73 5.75 19.73 5.75 19.73 5.75 C19.16 4.75 17.91 4.41 16.93 4.99 C16.93 4.99 12.80 7.43 12.80 7.43 C12.64 7.52 12.45 7.52 12.29 7.43 C12.13 7.33 12.03 7.16 12.03 6.97 C12.03 6.97 12.03 2.09 12.03 2.09 C12.03 0.94 11.12 0.00 9.99 0.00 C9.99 0.00 9.99 0.00 9.99 0.00 C8.86 0.00 7.94 0.94 7.94 2.09 C7.94 2.09 7.94 6.97 7.94 6.97 C7.94 7.16 7.85 7.33 7.69 7.43 C7.53 7.52 7.33 7.52 7.18 7.43 C7.18 7.43 3.04 4.99 3.04 4.99 C2.07 4.43 0.84 4.77 0.27 5.75 C0.27 5.75 0.27 5.75 0.27 5.75 C-0.29 6.75 0.04 8.03 1.02 8.60 C1.02 8.60 5.16 11.05 5.16 11.05 C5.32 11.14 5.42 11.31 5.42 11.50 C5.42 11.69 5.32 11.86 5.16 11.95 C5.16 11.95 1.02 14.40 1.02 14.40 C0.04 14.97 -0.29 16.25 0.27 17.25 C0.27 17.25 0.27 17.25 0.27 17.25 C0.84 18.25 2.09 18.59 3.07 18.01 C3.07 18.01 7.20 15.57 7.20 15.57 C7.36 15.48 7.55 15.48 7.71 15.57 C7.87 15.67 7.97 15.84 7.97 16.03 C7.97 16.03 7.97 20.91 7.97 20.91 C7.97 22.06 8.88 23.00 10.01 23.00 C10.01 23.00 10.01 23.00 10.01 23.00 C11.14 23.00 12.06 22.06 12.06 20.91 C12.06 20.91 12.06 16.03 12.06 16.03 C12.06 15.84 12.15 15.67 12.31 15.57 C12.47 15.48 12.67 15.48 12.82 15.57 C12.82 15.57 16.96 18.01 16.96 18.01 C17.93 18.57 19.16 18.23 19.73 17.25 C19.73 17.25 19.73 17.25 19.73 17.25 C20.29 16.25 19.96 14.97 18.98 14.40 C18.98 14.40 14.84 11.95 14.84 11.95 C14.68 11.86 14.58 11.69 14.58 11.50 C14.58 11.31 14.68 11.14 14.84 11.05 C14.84 11.05 18.98 8.60 18.98 8.60Z" fill="#ADE8FF" stroke="#8CCBEA" stroke-width=".8"/></svg>');
 
 function layer() {
@@ -448,7 +509,7 @@ function applyBg() {
         decoKey = dk;
         decoAnim = window.lottie.loadAnimation({ container: el.querySelector('.wb-deco'), renderer: 'svg', loop: true, autoplay: !document.hidden, animationData: JSON.parse(JSON.stringify(anims[dk])) });
       }
-      setFall(el, w.k === 'snow' ? 'snow' : w.rain ? 'rain' + w.rain : '', night || dark);
+      setFall(el, w.k === 'snow' ? 'snow' : w.rain ? (w.k === 'storm' ? 'storm' : 'rain') + w.rain : '', night || dark);
     }).catch(() => {});
   };
   if (m.data) go(); else if (m.p) m.p.then(go); else go();
@@ -458,16 +519,17 @@ async function setFall(el, kind, light) {
   if (key === fallKey) return; fallKey = key;
   if (fallC) { fallC.destroy(); fallC = null; }
   if (!kind) return;
-  const col = light ? '#A9C3E0' : '#6F8FB3', lv = +kind.slice(4) || 0;
+  const lv = +kind.slice(-1) || 0, tilt = kind.startsWith('storm') ? 37 : 15;
   const opt = kind === 'snow'
     ? { particles: { number: { value: 46 }, shape: { type: 'image', options: { image: { src: FLAKE, width: 44, height: 50 } } },
         opacity: { value: { min: .75, max: 1 } }, size: { value: { min: 4, max: 9 } },
         rotate: { value: { min: 0, max: 360 }, direction: 'random', animation: { enable: true, speed: 6 } },
         wobble: { enable: true, distance: 12, speed: { min: -4, max: 4 } },
         move: { enable: true, direction: 'bottom', speed: { min: .8, max: 2 }, straight: false, outModes: { default: 'out' } } } }
-    : { particles: { number: { value: [0, 70, 110, 160][lv] }, color: { value: col }, shape: { type: 'line' }, stroke: { width: 1.4, color: { value: col } },
-        opacity: { value: { min: .25, max: .6 } }, size: { value: { min: 7, max: 14 } }, rotate: { value: 100, animation: { enable: false } },
-        move: { enable: true, direction: 'bottom', angle: { value: 8, offset: -6 }, speed: { min: lv === 3 ? 26 : 18, max: lv === 3 ? 36 : 26 }, straight: true, outModes: { default: 'out' } } } };
+    : { particles: { number: { value: [0, 60, 95, 140][lv] }, shape: { type: 'image', options: { image: { src: DROP, width: 10, height: 64 } } },
+        opacity: { value: { min: .7, max: 1 } }, size: { value: { min: 1.3, max: 2 } }, rotate: { value: tilt, animation: { enable: false } },
+        // direction 用角度：90 是正下方，加上 tilt 就是往左下斜，和雨滴的斜度一致
+        move: { enable: true, direction: 90 + tilt, speed: { min: lv === 3 ? 20 : 14, max: lv === 3 ? 28 : 20 }, straight: true, outModes: { default: 'out' } } } };
   const c = await window.tsParticles.load({ id: 'wxfall', element: el.querySelector('.wb-fall'), options: { fullScreen: { enable: false }, fpsLimit: 60, detectRetina: true, ...opt } });
   if (fallKey === key) fallC = c; else c?.destroy();
 }

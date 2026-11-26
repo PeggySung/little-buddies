@@ -3,7 +3,7 @@ import { doc, collection, onSnapshot, setDoc, updateDoc, deleteDoc, serverTimest
 import { $, $$, esc, ic, toast, copyText, localGet, localSet } from './ui.js';
 import { todayIn, dayCount, tripStatus } from './places.js';
 import { bookingEvents, dayTexts } from './book.js';
-import { mountDayWx, setTodayPlace } from './weather.js';
+import { mountDayWx, setTodayPlace, guessDayPlace, guessedPlace } from './weather.js';
 
 // 類型圖示：11/20 改成自己畫的線條 SVG（跟底部分頁同一套粗細），顏色跟著深淺色主題
 const KINDS = {
@@ -315,9 +315,14 @@ export function renderPlan(ctx, t, sortDay = null) {
   $('#roStart')?.addEventListener('click', () => { sortFromPlan = true; location.hash = `#/trip/${t.id}/plan/sort/${day}`; });
   $$('[data-edit]').forEach(b => b.addEventListener('click', () => editItem(ctx, t, (cache[t.id].items || []).find(x => x.id === b.dataset.edit), day, japan)));
   $$('[data-copy]').forEach(b => b.addEventListener('click', () => copyText(b.dataset.copy)));
-  mountDayWx(t, dinfo && { ...dinfo, ...dayPlace(t, dinfo.date, items) });
-  // 天氣背景：旅行中的今天也用判斷出來的地區
-  if (todayDay) setTodayPlace(t, dayPlace(t, today, (cache[t.id]?.items || []).filter(x => x.day === todayDay)).pi);
+  mountDayWx(t, dinfo && { ...dinfo, ...dayPlace(t, dinfo.date, items), items });
+  // 天氣背景：旅行中的今天也用判斷出來的地區（行程裡沒寫地區名字時，用行程地點的位置判斷）
+  if (todayDay) {
+    const tItems = (cache[t.id]?.items || []).filter(x => x.day === todayDay), dp = dayPlace(t, today, tItems);
+    const known = dp.multi && !dp.auto ? guessedPlace(t, tItems) : null;
+    setTodayPlace(t, known ?? dp.pi);
+    if (dp.multi && !dp.auto && known === undefined) guessDayPlace(t, tItems).then(pi => { if (pi != null) setTodayPlace(t, pi); });
+  }
   centerDay(false);
   if ((marks.now || marks.next) && !renderPlan.scrolled?.[t.id]) {
     renderPlan.scrolled = { ...(renderPlan.scrolled || {}), [t.id]: true };
