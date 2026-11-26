@@ -435,8 +435,9 @@ function cardHTML(d, date, tripTz) {
 let bgTrip = null, bgTimer = null, bgKey = '';
 let libs = null, anims = null, decoAnim = null, decoKey = '', fallC = null, fallKey = '';
 // 雪花：取自 jochang 下雪動畫裡的同一顆雪花，全畫面下雪和右上角圖示風格一致
-// 雨滴：和右上角下雨動畫裡的雨滴一樣（淺藍色圓角長條、往左下斜 15°，雷雨斜 37°）
-const DROP = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 64" width="10" height="64"><rect x="1.5" y="1.5" width="7" height="61" rx="3.5" fill="#ADE8FF" stroke="#8CCBEA" stroke-width="1.2"/></svg>');
+// 雨滴：和右上角下雨動畫裡的雨滴一樣（霧藍色圓角長條、往左下斜 15°，雷雨斜 37°）
+const DROP_FILL = '#A9BED3', DROP_LINE = '#8FA6BD';
+const DROP = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 64" width="10" height="64"><rect x="1.5" y="1.5" width="7" height="61" rx="3.5" fill="' + DROP_FILL + '" stroke="' + DROP_LINE + '" stroke-width="1.2"/></svg>');
 const FLAKE = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="-1 -1 22 25" width="44" height="50"><path d="M18.98 8.60 C19.96 8.03 20.29 6.75 19.73 5.75 C19.73 5.75 19.73 5.75 19.73 5.75 C19.16 4.75 17.91 4.41 16.93 4.99 C16.93 4.99 12.80 7.43 12.80 7.43 C12.64 7.52 12.45 7.52 12.29 7.43 C12.13 7.33 12.03 7.16 12.03 6.97 C12.03 6.97 12.03 2.09 12.03 2.09 C12.03 0.94 11.12 0.00 9.99 0.00 C9.99 0.00 9.99 0.00 9.99 0.00 C8.86 0.00 7.94 0.94 7.94 2.09 C7.94 2.09 7.94 6.97 7.94 6.97 C7.94 7.16 7.85 7.33 7.69 7.43 C7.53 7.52 7.33 7.52 7.18 7.43 C7.18 7.43 3.04 4.99 3.04 4.99 C2.07 4.43 0.84 4.77 0.27 5.75 C0.27 5.75 0.27 5.75 0.27 5.75 C-0.29 6.75 0.04 8.03 1.02 8.60 C1.02 8.60 5.16 11.05 5.16 11.05 C5.32 11.14 5.42 11.31 5.42 11.50 C5.42 11.69 5.32 11.86 5.16 11.95 C5.16 11.95 1.02 14.40 1.02 14.40 C0.04 14.97 -0.29 16.25 0.27 17.25 C0.27 17.25 0.27 17.25 0.27 17.25 C0.84 18.25 2.09 18.59 3.07 18.01 C3.07 18.01 7.20 15.57 7.20 15.57 C7.36 15.48 7.55 15.48 7.71 15.57 C7.87 15.67 7.97 15.84 7.97 16.03 C7.97 16.03 7.97 20.91 7.97 20.91 C7.97 22.06 8.88 23.00 10.01 23.00 C10.01 23.00 10.01 23.00 10.01 23.00 C11.14 23.00 12.06 22.06 12.06 20.91 C12.06 20.91 12.06 16.03 12.06 16.03 C12.06 15.84 12.15 15.67 12.31 15.57 C12.47 15.48 12.67 15.48 12.82 15.57 C12.82 15.57 16.96 18.01 16.96 18.01 C17.93 18.57 19.16 18.23 19.73 17.25 C19.73 17.25 19.73 17.25 19.73 17.25 C20.29 16.25 19.96 14.97 18.98 14.40 C18.98 14.40 14.84 11.95 14.84 11.95 C14.68 11.86 14.58 11.69 14.58 11.50 C14.58 11.31 14.68 11.14 14.84 11.05 C14.84 11.05 18.98 8.60 18.98 8.60Z" fill="#ADE8FF" stroke="#8CCBEA" stroke-width=".8"/></svg>');
 
 function layer() {
@@ -454,6 +455,10 @@ function loadLibs() {
     await Promise.all([loadScript('lib/lottie_svg.min.js'), loadScript('lib/tsparticles.slim.min.js')]);
     await window.loadSlim(window.tsParticles);
     anims = await (await fetch('img/weather/anims.json')).json();
+    // 右上角動畫裡的雨滴原本是水藍色，換成和全畫面雨滴一樣的霧藍色
+    const rgb = [1, 3, 5].map(i => parseInt(DROP_FILL.slice(i, i + 2), 16) / 255);
+    const paint = it => it.forEach(x => { if (x.ty === 'gr') paint(x.it); if (x.ty === 'fl' && !x.c.a) x.c.k = [...rgb, 1]; });
+    Object.values(anims).forEach(an => an.layers.forEach(L => { if (/^drop/.test(L.nm) && L.shapes) paint(L.shapes); }));
   })().catch(e => { libs = null; throw e; });
   return libs;
 }
